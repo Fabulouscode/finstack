@@ -1,20 +1,14 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
-import { AppModule } from '../src/app.module';
+import { createTestApp } from './utils/create-test-app';
 
 describe('Health (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleRef.createNestApplication();
-    await app.init();
+    app = await createTestApp();
   });
 
   afterEach(async () => {

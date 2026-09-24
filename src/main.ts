@@ -2,19 +2,26 @@ import { Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { configureApp } from './app.setup';
 import { appConfig } from './config/app.config';
+import { SWAGGER_PATH } from './docs/swagger';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const config = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
 
+  configureApp(app);
   app.enableShutdownHooks();
 
   await app.listen(config.port);
-  Logger.log(
+
+  const logger = new Logger('Bootstrap');
+  logger.log(
     `FinStack listening on port ${config.port} (${config.environment})`,
-    'Bootstrap',
   );
+  if (config.swaggerEnabled) {
+    logger.log(`API docs at http://localhost:${config.port}/${SWAGGER_PATH}`);
+  }
 }
 
 void bootstrap();

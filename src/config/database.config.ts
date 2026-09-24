@@ -8,13 +8,8 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { toBoolean } from './env-transformers';
 import { validateConfig } from './validate-config';
-
-const toBoolean = ({ value }: { value: unknown }): unknown => {
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return value;
-};
 
 class DatabaseEnvironmentVariables {
   @IsString()

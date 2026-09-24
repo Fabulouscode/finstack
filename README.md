@@ -36,7 +36,7 @@ npm run migration:run
 npm run start:dev
 ```
 
-Then check `http://localhost:3000/health/ready`.
+Then open the API docs at `http://localhost:3000/docs`, or check `http://localhost:3000/health/ready`.
 
 ### Everything in Docker
 
@@ -56,6 +56,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | --- | --- | --- |
 | `NODE_ENV` | `development` | `development`, `test` or `production` |
 | `PORT` | `3000` | HTTP port (1–65535) |
+| `SWAGGER_ENABLED` | `true` outside production | Serve API docs at `/docs` |
 | `DATABASE_HOST` | `localhost` | PostgreSQL host |
 | `DATABASE_PORT` | `5432` | PostgreSQL port |
 | `DATABASE_USER` | — (required) | PostgreSQL user |
@@ -100,6 +101,25 @@ constructor(
 - `synchronize` is always off. Every schema change is a migration in `src/database/migrations/`.
 - Tables and columns use snake_case (`ledgerAccountId` → `ledger_account_id`).
 - The migration CLI runs against the compiled `dist/` output, so the `migration:*` scripts build first.
+
+## API documentation (Swagger)
+
+| URL | Content |
+| --- | --- |
+| `/docs` | Swagger UI |
+| `/docs-json` | OpenAPI 3 document (JSON), importable into Postman or Insomnia |
+| `/docs-yaml` | OpenAPI 3 document (YAML) |
+
+Docs are enabled by default everywhere except production. Set `SWAGGER_ENABLED` to override.
+
+Every endpoint must document:
+
+- `@ApiTags` and `@ApiOperation` (summary and description).
+- Request and response DTOs with `@ApiProperty({ description, example })` on every field.
+- Auth requirements: `@ApiBearerAuth(ACCESS_TOKEN_SCHEME)` or `@ApiSecurity(API_KEY_SCHEME)` from `src/docs/swagger.ts`.
+- Every non-2xx response it can return (`@ApiBadRequestResponse`, `@ApiConflictResponse`, ...).
+
+Decorators are written explicitly; the Nest CLI Swagger plugin is not used. The plugin only runs during `nest build`, so tests (via `ts-jest`) would see a different document than production.
 
 ## Health checks
 

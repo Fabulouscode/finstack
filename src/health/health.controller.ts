@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   HealthCheck,
   HealthCheckResult,
@@ -6,6 +7,7 @@ import {
   TypeOrmHealthIndicator,
 } from '@nestjs/terminus';
 
+@ApiTags('Health')
 @Controller('health')
 export class HealthController {
   constructor(
@@ -13,16 +15,24 @@ export class HealthController {
     private readonly database: TypeOrmHealthIndicator,
   ) {}
 
-  /** Liveness: the process is up. Must not depend on external services. */
   @Get('live')
   @HealthCheck()
+  @ApiOperation({
+    summary: 'Liveness probe',
+    description:
+      'Reports that the process is running. Does not check dependencies, so a database outage never causes the orchestrator to restart healthy instances.',
+  })
   live(): Promise<HealthCheckResult> {
     return this.health.check([]);
   }
 
-  /** Readiness: the instance can serve traffic (dependencies reachable). */
   @Get('ready')
   @HealthCheck()
+  @ApiOperation({
+    summary: 'Readiness probe',
+    description:
+      'Reports whether the instance can serve traffic. Returns 503 when PostgreSQL is unreachable (1.5s timeout).',
+  })
   ready(): Promise<HealthCheckResult> {
     return this.health.check([
       () => this.database.pingCheck('database').withTimeout(1500),

@@ -8,6 +8,7 @@ describe('appConfig', () => {
     process.env = { ...originalEnv };
     delete process.env.NODE_ENV;
     delete process.env.PORT;
+    delete process.env.SWAGGER_ENABLED;
   });
 
   afterAll(() => {
@@ -19,6 +20,7 @@ describe('appConfig', () => {
       environment: Environment.Development,
       port: 3000,
       isProduction: false,
+      swaggerEnabled: true,
     });
   });
 
@@ -30,7 +32,18 @@ describe('appConfig', () => {
       environment: Environment.Production,
       port: 8080,
       isProduction: true,
+      swaggerEnabled: false,
     });
+  });
+
+  it('lets SWAGGER_ENABLED override the environment default', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SWAGGER_ENABLED = 'true';
+    expect(appConfig().swaggerEnabled).toBe(true);
+
+    process.env.NODE_ENV = 'development';
+    process.env.SWAGGER_ENABLED = 'false';
+    expect(appConfig().swaggerEnabled).toBe(false);
   });
 
   it.each([
@@ -39,6 +52,7 @@ describe('appConfig', () => {
     ['PORT', '0'],
     ['PORT', '70000'],
     ['PORT', '30.5'],
+    ['SWAGGER_ENABLED', 'yes'],
   ])('rejects invalid %s=%s', (name, value) => {
     process.env[name] = value;
 
