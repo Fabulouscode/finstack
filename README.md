@@ -71,6 +71,9 @@ Configuration is read from environment variables (and `.env` in development), va
 | `ALLOWED_WALLET_CURRENCIES` | the default only | Comma-separated currencies users may open wallets in |
 | `IDEMPOTENCY_KEY_TTL_HOURS` | `24` | How long responses are kept for replay |
 | `IDEMPOTENCY_LOCK_TIMEOUT_SECONDS` | `60` | After this, an in-progress key may be taken over by a retry |
+| `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
+| `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
+| `MOCK_PROVIDER_WEBHOOK_SECRET` | — (required with `mock`) | HMAC secret the mock provider signs webhooks with |
 | `FX_SPREAD_BPS` | `100` | Platform margin on conversions (100 = 1%) |
 | `FX_QUOTE_TTL_SECONDS` | `900` | How long a quote stays valid |
 | `FX_RATE_MAX_AGE_SECONDS` | `86400` | Refuse to quote on rates older than this |
@@ -223,6 +226,33 @@ curl -X POST localhost:3000/v1/transfers \
 
 Transactions move through explicit states (`pending → processing → successful → reversed`, or `failed`, `cancelled`, `expired`). Invalid transitions are rejected by the code **and** by a database trigger. See [ADR 0011](./docs/adr/0011-idempotency-and-transaction-states.md).
 
+## Payments and webhooks
+
+| Endpoint | Auth | Description |
+| --- | --- | --- |
+| `POST /v1/payments` | Bearer + `Idempotency-Key` | Start a payment: `{ "amount": 1550000, "currency": "NGN" }` → hosted checkout URL |
+| `GET /v1/payments/:id` | Bearer | Payment status (and the FX conversion, if any) |
+| `POST /v1/payments/:id/verify` | Bearer | Ask the provider and settle (e.g. after the customer returns from checkout) |
+| `POST /v1/webhooks/:provider` | Signature | Provider callbacks |
+| `POST /v1/dev/mock-provider/payments/:providerReference/complete` | Bearer | **Dev only:** finish a mock checkout (sends a signed webhook) |
+
+**Flow:** the crediting rule picks the wallet (locking an FX quote if the currencies differ) → the provider returns a checkout URL → the customer pays → the provider's **signed** webhook arrives → FinStack **re-checks the payment with the provider** and compares the amount → one database transaction credits the wallet (converting if needed), posts the ledger and marks the transaction `successful`.
+
+Duplicate webhooks are ignored, forged ones rejected, and a failure while processing is recorded on the event for retry. The wallet is credited at most once, however many webhooks and verify calls race. See [ADR 0012](./docs/adr/0012-payments-and-webhooks.md).
+
+Try it locally with the mock provider:
+
+```bash
+# 1. Start a payment (NGN into a USD wallet converts at the locked quote)
+curl -X POST localhost:3000/v1/payments -H "Authorization: Bearer <token>" \
+  -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: application/json' \
+  -d '{"amount":1550000,"currency":"NGN"}'
+
+# 2. "Pay" at the mock checkout (sends a signed webhook through the real pipeline)
+curl -X POST localhost:3000/v1/dev/mock-provider/payments/<providerReference>/complete \
+  -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d '{"outcome":"successful"}'
+```
+
 ## FX (currency conversion)
 
 | Endpoint | Auth | Description |
@@ -291,7 +321,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [x] Transactions (state machine), idempotency keys, transfers
   - [ ] Organizations, permissions, API keys
-- [ ] **Phase 2 — Payments:** provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
+- [ ] **Phase 2 — Payments** (done: provider abstraction, mock provider, payments with FX, signed webhooks; next: outbox, BullMQ, Paystack, Stripe, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
