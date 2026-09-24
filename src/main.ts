@@ -1,13 +1,14 @@
 import { Logger } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
 import { appConfig } from './config/app.config';
 import { SWAGGER_PATH } from './docs/swagger';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
 
   configureApp(app);

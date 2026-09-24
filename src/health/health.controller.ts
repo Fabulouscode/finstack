@@ -1,14 +1,20 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseFilters, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   HealthCheck,
   HealthCheckResult,
   HealthCheckService,
   TypeOrmHealthIndicator,
 } from '@nestjs/terminus';
+import { HealthCheckFilter } from './health-check.filter';
 
+// Probes are unversioned (/health/*) and never rate limited: orchestrators
+// poll them constantly and expect a stable URL.
 @ApiTags('Health')
-@Controller('health')
+@Controller({ path: 'health', version: VERSION_NEUTRAL })
+@SkipThrottle()
+@UseFilters(HealthCheckFilter)
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,

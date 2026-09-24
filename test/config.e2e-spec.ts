@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { AppModule } from '../src/app.module';
+import { ConfigModule } from '../src/config/config.module';
 
 describe('Config (e2e)', () => {
   const originalEnv = process.env;
@@ -8,11 +8,13 @@ describe('Config (e2e)', () => {
     process.env = originalEnv;
   });
 
-  it('refuses to boot the application with invalid configuration', async () => {
+  // Boots only ConfigModule: compiling the full AppModule here would open a
+  // database pool before validation fails, leaving it with no one to close it.
+  it('refuses to boot with invalid configuration', async () => {
     process.env = { ...originalEnv, PORT: 'not-a-port' };
 
     await expect(
-      Test.createTestingModule({ imports: [AppModule] }).compile(),
+      Test.createTestingModule({ imports: [ConfigModule] }).compile(),
     ).rejects.toThrow(/Invalid "app" configuration[\s\S]*PORT/);
   });
 });
