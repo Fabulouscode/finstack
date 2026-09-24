@@ -61,6 +61,11 @@ Configuration is read from environment variables (and `.env` in development), va
 | `TRUST_PROXY_HOPS` | `0` | Reverse proxies in front of the app, so the real client IP is used |
 | `RATE_LIMIT_TTL_SECONDS` | `60` | Rate-limit window |
 | `RATE_LIMIT_MAX` | `100` | Requests allowed per client per window |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Stricter per-endpoint limit for login, register and refresh |
+| `JWT_ACCESS_SECRET` | — (required) | HMAC key for access tokens, min 32 chars (`openssl rand -base64 48`). The `.env.example` placeholder is refused in production. |
+| `JWT_ACCESS_TTL_SECONDS` | `900` | Access token lifetime (60–86400) |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | Refresh token lifetime (1–365) |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `finstack` / `finstack-api` | Pinned `iss` / `aud` claims |
 | `DATABASE_HOST` | `localhost` | PostgreSQL host |
 | `DATABASE_PORT` | `5432` | PostgreSQL port |
 | `DATABASE_USER` | — (required) | PostgreSQL user |
@@ -129,6 +134,30 @@ constructor(
 - **Request IDs:** send `X-Request-Id` or one is generated. It's echoed in the response and in error bodies. Read it anywhere with `RequestContext.requestId()`.
 - **Security:** Helmet headers on every response, CORS off unless configured, and rate limiting per client IP (health probes are exempt).
 
+## Authentication
+
+| Endpoint | Auth | Description |
+| --- | --- | --- |
+| `POST /v1/auth/register` | Public | Create an account; returns user + tokens |
+| `POST /v1/auth/login` | Public | Email + password → tokens |
+| `POST /v1/auth/refresh` | Public | Refresh token → new token pair (rotation) |
+| `POST /v1/auth/logout` | Public | Revoke the session the refresh token belongs to |
+| `POST /v1/auth/logout-all` | Bearer | Revoke every session of the current user |
+| `GET /v1/users/me` | Bearer | Current user |
+
+```bash
+# Register
+curl -X POST localhost:3000/v1/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"ada@example.com","password":"correct-horse-battery-staple","firstName":"Ada","lastName":"Lovelace"}'
+
+# Call an authenticated endpoint
+curl localhost:3000/v1/users/me -H "Authorization: Bearer <accessToken>"
+```
+
+- **Access tokens** are JWTs valid for 15 minutes. **Refresh tokens** are single-use: each refresh returns a new one, and reusing an old one ends the whole session. Don't refresh concurrently with the same token.
+- Every route requires a Bearer token by default. Mark public routes with `@Public()`, restrict by platform role with `@Roles(UserRole.Admin)`, and read the caller with `@CurrentUser()`.
+- Details and trade-offs: [ADR 0006](./docs/adr/0006-authentication-and-sessions.md).
+
 ## API documentation (Swagger)
 
 | URL | Content |
@@ -144,7 +173,7 @@ Every endpoint must document:
 - `@ApiTags` and `@ApiOperation` (summary and description).
 - Request and response DTOs with `@ApiProperty({ description, example })` on every field.
 - Auth requirements: `@ApiBearerAuth(ACCESS_TOKEN_SCHEME)` or `@ApiSecurity(API_KEY_SCHEME)` from `src/docs/swagger.ts`.
-- Every non-2xx response it can return (`@ApiBadRequestResponse`, `@ApiConflictResponse`, ...).
+- Every error it can return, with `@ApiProblemResponse(status, 'CODE: description')` and `@ApiValidationProblemResponse()` from `src/docs/api-problem-response.decorator.ts`.
 
 Decorators are written explicitly; the Nest CLI Swagger plugin is not used. The plugin only runs during `nest build`, so tests (via `ts-jest`) would see a different document than production.
 
@@ -167,7 +196,11 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 
 ## Roadmap
 
-- [ ] **Phase 1 — Financial foundation:** config, PostgreSQL/TypeORM, Docker, auth, users, organizations, wallets, ledger, transactions, idempotency, row locking, Swagger
+- [ ] **Phase 1 — Financial foundation**
+  - [x] Config, PostgreSQL/TypeORM, Docker, HTTP foundation, Swagger
+  - [x] Users and authentication (JWT, rotating refresh tokens, roles)
+  - [ ] Organizations, permissions, API keys
+  - [ ] Wallets, ledger, transactions, idempotency
 - [ ] **Phase 2 — Payments:** provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
