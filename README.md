@@ -69,6 +69,8 @@ Configuration is read from environment variables (and `.env` in development), va
 | `WALLETS_PER_OWNER` | `single` | `single`: one wallet per user; `multiple`: one per allowed currency |
 | `DEFAULT_WALLET_CURRENCY` | `USD` | Currency of the first (primary) wallet when none is given |
 | `ALLOWED_WALLET_CURRENCIES` | the default only | Comma-separated currencies users may open wallets in |
+| `IDEMPOTENCY_KEY_TTL_HOURS` | `24` | How long responses are kept for replay |
+| `IDEMPOTENCY_LOCK_TIMEOUT_SECONDS` | `60` | After this, an in-progress key may be taken over by a retry |
 | `FX_SPREAD_BPS` | `100` | Platform margin on conversions (100 = 1%) |
 | `FX_QUOTE_TTL_SECONDS` | `900` | How long a quote stays valid |
 | `FX_RATE_MAX_AGE_SECONDS` | `86400` | Refuse to quote on rates older than this |
@@ -196,6 +198,31 @@ Each user has at most one wallet per currency, and one **primary** wallet. **Cre
 - `resolveCreditTarget` applies the crediting rule; `depositWithConversion` credits a wallet from a foreign-currency payment using an FX quote; `convertBetweenWallets` converts between a user's own wallets.
 - Query performance: [ledger entry pagination](./docs/performance/ledger-entries-pagination.md) (keyset vs OFFSET, with `EXPLAIN ANALYZE`).
 
+## Transfers and idempotency
+
+| Endpoint | Description |
+| --- | --- |
+| `POST /v1/transfers` | Send money to another user: `{ "recipientEmail": "bob@example.com", "amount": 2500, "currency": "USD" }`. Requires `Idempotency-Key`. |
+| `GET /v1/transactions` | My transactions, both directions, newest first, cursor-paginated |
+| `GET /v1/transactions/:id` | One transaction (visible to both parties) |
+
+```bash
+curl -X POST localhost:3000/v1/transfers \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H 'Content-Type: application/json' \
+  -d '{"recipientEmail":"bob@example.com","amount":2500}'
+```
+
+**Idempotency.** Every money-moving endpoint requires an `Idempotency-Key` header. Generate one per operation and reuse it when retrying:
+
+- Same key and body: the original response is returned (`Idempotent-Replayed: true`) and nothing executes twice.
+- Same key, different body: `422 IDEMPOTENCY_KEY_REUSED`.
+- Still running: `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`, so retry shortly.
+- Failed request: the key is released and a retry runs again.
+
+Transactions move through explicit states (`pending → processing → successful → reversed`, or `failed`, `cancelled`, `expired`). Invalid transitions are rejected by the code **and** by a database trigger. See [ADR 0011](./docs/adr/0011-idempotency-and-transaction-states.md).
+
 ## FX (currency conversion)
 
 | Endpoint | Auth | Description |
@@ -262,7 +289,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Users and authentication (JWT, rotating refresh tokens, roles)
   - [x] Double-entry ledger and wallets (single or multi-currency, primary wallet)
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
-  - [ ] Transactions and idempotency (money-moving endpoints)
+  - [x] Transactions (state machine), idempotency keys, transfers
   - [ ] Organizations, permissions, API keys
 - [ ] **Phase 2 — Payments:** provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
