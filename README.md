@@ -29,7 +29,26 @@ NestJS · TypeScript · PostgreSQL · TypeORM · Redis · BullMQ · Docker · Sw
 
 ```bash
 npm install
+cp .env.example .env
 npm run start:dev
+```
+
+## Configuration
+
+Configuration is read from environment variables (and `.env` in development), validated at startup and exposed to the code as typed namespaces. If any variable is missing or invalid, the app refuses to boot and lists every problem.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `NODE_ENV` | `development` | `development`, `test` or `production` |
+| `PORT` | `3000` | HTTP port (1–65535) |
+
+Each namespace lives in `src/config/<name>.config.ts` and declares its own validated schema. To use one in a provider:
+
+```ts
+constructor(
+  @Inject(appConfig.KEY)
+  private readonly config: ConfigType<typeof appConfig>,
+) {}
 ```
 
 ### Scripts
