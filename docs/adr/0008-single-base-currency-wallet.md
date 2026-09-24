@@ -1,6 +1,6 @@
 # ADR 0008: One base-currency wallet per user; providers convert foreign payments
 
-- **Status:** Accepted, decision 3 superseded by [ADR 0009](./0009-fx-conversion.md) (FinStack converts)
+- **Status:** Superseded by [ADR 0010](./0010-flexible-wallet-model.md) (wallet model) and [ADR 0009](./0009-fx-conversion.md) (FinStack converts)
 - **Date:** 2026-09-24
 - **Amends:** the wallet model in [ADR 0007](./0007-ledger-and-money.md) (one wallet per user and currency)
 

@@ -66,8 +66,9 @@ Configuration is read from environment variables (and `.env` in development), va
 | `JWT_ACCESS_TTL_SECONDS` | `900` | Access token lifetime (60–86400) |
 | `REFRESH_TOKEN_TTL_DAYS` | `30` | Refresh token lifetime (1–365) |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `finstack` / `finstack-api` | Pinned `iss` / `aud` claims |
-| `DEFAULT_WALLET_CURRENCY` | `USD` | Base currency for wallets opened without an explicit currency |
-| `ALLOWED_WALLET_CURRENCIES` | the default only | Comma-separated base currencies users may choose |
+| `WALLETS_PER_OWNER` | `single` | `single`: one wallet per user; `multiple`: one per allowed currency |
+| `DEFAULT_WALLET_CURRENCY` | `USD` | Currency of the first (primary) wallet when none is given |
+| `ALLOWED_WALLET_CURRENCIES` | the default only | Comma-separated currencies users may open wallets in |
 | `FX_SPREAD_BPS` | `100` | Platform margin on conversions (100 = 1%) |
 | `FX_QUOTE_TTL_SECONDS` | `900` | How long a quote stays valid |
 | `FX_RATE_MAX_AGE_SECONDS` | `86400` | Refuse to quote on rates older than this |
@@ -167,13 +168,23 @@ curl localhost:3000/v1/users/me -H "Authorization: Bearer <accessToken>"
 
 Every amount is an **integer in minor units** (cents, kobo) plus an ISO 4217 currency: `15000` USD is $150.00. Supported currencies are listed in `src/common/money/currency.ts`.
 
-**Each user has one wallet in a base currency.** The operator decides which: `DEFAULT_WALLET_CURRENCY` (USD by default) and, optionally, `ALLOWED_WALLET_CURRENCIES` to let users choose. Payments in other currencies are **converted by FinStack** at a locked quote. See [ADR 0008](./docs/adr/0008-single-base-currency-wallet.md) and [ADR 0009](./docs/adr/0009-fx-conversion.md).
+**The operator chooses the wallet model** ([ADR 0010](./docs/adr/0010-flexible-wallet-model.md)):
+
+| Product | Configuration |
+| --- | --- |
+| One USD balance; foreign payments converted into it | `WALLETS_PER_OWNER=single`, `DEFAULT_WALLET_CURRENCY=USD` (defaults) |
+| Local currency only, no FX | `single`, `DEFAULT_WALLET_CURRENCY=NGN`, and no FX rates configured |
+| Multi-currency accounts | `WALLETS_PER_OWNER=multiple`, `ALLOWED_WALLET_CURRENCIES=USD,NGN,GBP` |
+
+Each user has at most one wallet per currency, and one **primary** wallet. **Crediting rule:** incoming money goes to the wallet in its currency if there is one; otherwise it is converted ([FX](#fx-currency-conversion)) into the primary wallet.
 
 | Endpoint | Description |
 | --- | --- |
-| `POST /v1/wallets` | Open my wallet. Body `{}` for USD, or `{ "currency": "NGN" }`. Once per user. |
-| `GET /v1/wallets/me` | My wallet with `available`, `pending` and `reserved` balances |
-| `GET /v1/wallets/:id` | A wallet by id (own wallets only) |
+| `POST /v1/wallets` | Open a wallet: `{}` for the default currency, or `{ "currency": "NGN" }` |
+| `GET /v1/wallets` | My wallets, primary first |
+| `GET /v1/wallets/primary` | My primary wallet |
+| `GET /v1/wallets/:id` | A wallet with `available`, `pending` and `reserved` balances (own wallets only) |
+| `POST /v1/wallets/:id/primary` | Make a wallet primary |
 | `GET /v1/wallets/:id/entries?limit=20&cursor=...` | Ledger history, newest first, cursor-paginated |
 
 **How it works:**
@@ -182,7 +193,7 @@ Every amount is an **integer in minor units** (cents, kobo) plus an ISO 4217 cur
 - `WalletsService` provides `deposit`, `withdraw`, `transfer`, `reserve` and `release`. Each takes a `reference` and is idempotent: retrying with the same reference never moves money twice. HTTP endpoints for moving money arrive with the idempotency module.
 - The database enforces the rules even if application code is bypassed: balanced transactions, no overdrafts, immutable history, and balances that change only through entries. See [ADR 0007](./docs/adr/0007-ledger-and-money.md).
 - Concurrent operations on one balance are serialised with row locks taken in a consistent order. Two simultaneous ₦7,000 withdrawals from a ₦10,000 wallet: exactly one succeeds.
-- `depositWithConversion` credits a wallet from a foreign-currency payment using an FX quote.
+- `resolveCreditTarget` applies the crediting rule; `depositWithConversion` credits a wallet from a foreign-currency payment using an FX quote; `convertBetweenWallets` converts between a user's own wallets.
 - Query performance: [ledger entry pagination](./docs/performance/ledger-entries-pagination.md) (keyset vs OFFSET, with `EXPLAIN ANALYZE`).
 
 ## FX (currency conversion)
@@ -195,6 +206,10 @@ Every amount is an **integer in minor units** (cents, kobo) plus an ISO 4217 cur
 | `GET /v1/fx/quotes/:id` | Bearer | One of my quotes |
 
 Example at USD/NGN 1550 with a 1% spread: paying ₦15,500.00 credits **$9.90**. The $0.10 is booked as FX revenue, and both currency legs post to the ledger atomically. Credited amounts round down, charged amounts round up, and quotes are refused when the rate is older than `FX_RATE_MAX_AGE_SECONDS`.
+
+> **Before enabling FX in production:** converting customer funds and holding foreign-currency balances can be regulated activity (for example, Central Bank of Nigeria rules on FX and domiciliary balances). Make sure your business is authorised. FX is off in practice until you configure rates: without a rate, conversions are refused.
+>
+> **Treasury risk:** the `system:fx-position:*` ledger accounts show your open exposure (e.g. NGN held against USD owed to customers). FinStack records it; it does not hedge or sell it for you.
 
 To make a user an admin (until an admin module exists):
 
@@ -245,7 +260,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 - [ ] **Phase 1 — Financial foundation**
   - [x] Config, PostgreSQL/TypeORM, Docker, HTTP foundation, Swagger
   - [x] Users and authentication (JWT, rotating refresh tokens, roles)
-  - [x] Double-entry ledger and base-currency wallets
+  - [x] Double-entry ledger and wallets (single or multi-currency, primary wallet)
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [ ] Transactions and idempotency (money-moving endpoints)
   - [ ] Organizations, permissions, API keys
