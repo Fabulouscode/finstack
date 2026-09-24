@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { appConfig } from './app.config';
+import { databaseConfig } from './database.config';
 
 /**
  * Loads `.env` (if present) and registers every validated config namespace.
@@ -13,7 +14,7 @@ import { appConfig } from './app.config';
     NestConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [appConfig],
+      load: [appConfig, databaseConfig],
     }),
   ],
 })

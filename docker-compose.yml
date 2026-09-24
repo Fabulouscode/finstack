@@ -1,0 +1,77 @@
+# Local development stack: PostgreSQL, Redis, a one-shot migration job and the API.
+#
+#   docker compose up -d postgres redis   # infrastructure only (run the app with `npm run start:dev`)
+#   docker compose up --build             # everything, including the API
+#
+# Host ports come from .env so they can be moved if they clash with local services.
+
+name: finstack
+
+x-database-env: &database-env
+  DATABASE_HOST: postgres
+  DATABASE_PORT: 5432
+  DATABASE_USER: ${DATABASE_USER:-finstack}
+  DATABASE_PASSWORD: ${DATABASE_PASSWORD:-finstack}
+  DATABASE_NAME: ${DATABASE_NAME:-finstack}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-finstack}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-finstack}
+      POSTGRES_DB: ${DATABASE_NAME:-finstack}
+    ports:
+      - '${DATABASE_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    # BullMQ requires keys never to be evicted; AOF keeps queued jobs across restarts.
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build: .
+    image: finstack-api:local
+    command: ['node', 'node_modules/typeorm/cli.js', 'migration:run', '-d', 'dist/database/data-source.js']
+    environment:
+      <<: *database-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  app:
+    build: .
+    image: finstack-api:local
+    environment:
+      <<: *database-env
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+    ports:
+      - '${PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
