@@ -1,6 +1,6 @@
 # ADR 0001: Runtime and tooling
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0002](./0002-commonjs-jest-eslint-node-24.md)
 - **Date:** 2026-09-24
 
 ## Context
