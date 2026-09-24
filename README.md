@@ -57,6 +57,10 @@ Configuration is read from environment variables (and `.env` in development), va
 | `NODE_ENV` | `development` | `development`, `test` or `production` |
 | `PORT` | `3000` | HTTP port (1–65535) |
 | `SWAGGER_ENABLED` | `true` outside production | Serve API docs at `/docs` |
+| `CORS_ORIGINS` | empty (CORS off) | Comma-separated browser origins, or `*` |
+| `TRUST_PROXY_HOPS` | `0` | Reverse proxies in front of the app, so the real client IP is used |
+| `RATE_LIMIT_TTL_SECONDS` | `60` | Rate-limit window |
+| `RATE_LIMIT_MAX` | `100` | Requests allowed per client per window |
 | `DATABASE_HOST` | `localhost` | PostgreSQL host |
 | `DATABASE_PORT` | `5432` | PostgreSQL port |
 | `DATABASE_USER` | — (required) | PostgreSQL user |
@@ -101,6 +105,29 @@ constructor(
 - `synchronize` is always off. Every schema change is a migration in `src/database/migrations/`.
 - Tables and columns use snake_case (`ledgerAccountId` → `ledger_account_id`).
 - The migration CLI runs against the compiled `dist/` output, so the `migration:*` scripts build first.
+
+## HTTP conventions
+
+- **Versioning:** feature routes live under `/v1/...`. Health probes are unversioned (`/health/*`).
+- **Errors:** [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457), `application/problem+json`, with a stable `code` to branch on:
+
+  ```json
+  {
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "detail": "Request validation failed",
+    "instance": "/v1/transfers",
+    "code": "VALIDATION_ERROR",
+    "requestId": "b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "errors": [{ "field": "amount", "messages": ["amount must be an integer number"] }]
+  }
+  ```
+
+  Throw `AppException(code, detail, status)` (from `src/common/http/app.exception.ts`) for domain errors. Any other error becomes a generic `500` and is logged with its request ID.
+- **Validation:** unknown fields are rejected, and types are never converted implicitly. Use `@Type(() => Number)` where conversion is intended.
+- **Request IDs:** send `X-Request-Id` or one is generated. It's echoed in the response and in error bodies. Read it anywhere with `RequestContext.requestId()`.
+- **Security:** Helmet headers on every response, CORS off unless configured, and rate limiting per client IP (health probes are exempt).
 
 ## API documentation (Swagger)
 
