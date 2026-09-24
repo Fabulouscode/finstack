@@ -5,6 +5,7 @@ import { CurrencyCode } from '../common/money/currency';
 import { walletsConfig } from '../config/wallets.config';
 import type { WalletsConfig } from '../config/wallets.config';
 import { isUniqueViolation } from '../database/postgres-errors';
+import { ConversionResult, FxService } from '../fx/fx.service';
 import { LedgerAccount } from '../ledger/ledger-account.entity';
 import { CurrencyMismatchException } from '../ledger/ledger.errors';
 import {
@@ -17,6 +18,7 @@ import { EntryDirection, LedgerAccountType } from '../ledger/ledger.types';
 import { Wallet, WalletStatus } from './wallet.entity';
 import {
   WalletAlreadyExistsException,
+  WalletCurrencyNotAllowedException,
   WalletNotActiveException,
   WalletNotFoundException,
 } from './wallets.errors';
@@ -53,6 +55,7 @@ export class WalletsService {
     private readonly ledger: LedgerService,
     @Inject(walletsConfig.KEY)
     private readonly config: WalletsConfig,
+    private readonly fx: FxService,
   ) {}
 
   /**
@@ -64,6 +67,12 @@ export class WalletsService {
     userId: string,
     currency: CurrencyCode = this.config.defaultCurrency,
   ): Promise<WalletWithBalances> {
+    if (!this.config.allowedCurrencies.includes(currency)) {
+      throw new WalletCurrencyNotAllowedException(
+        this.config.allowedCurrencies,
+      );
+    }
+
     try {
       const wallet = await this.dataSource.transaction(async (manager) => {
         const account = (purpose: string): Promise<LedgerAccount> =>
@@ -147,6 +156,34 @@ export class WalletsService {
         amount: movement.amount,
       },
     ]);
+  }
+
+  /**
+   * External funds in a foreign currency, converted into the wallet's base
+   * currency at a locked FX quote (e.g. ₦15,500 paid -> $9.90 credited).
+   * Idempotent by reference; the quote is consumed exactly once.
+   */
+  async depositWithConversion(
+    walletId: string,
+    input: { quoteId: string; reference: string; description: string },
+  ): Promise<ConversionResult> {
+    const wallet = await this.getWallet(walletId);
+    const quote = await this.fx.getQuote(input.quoteId);
+    if (quote.targetCurrency !== wallet.currency) {
+      throw new CurrencyMismatchException(
+        `The quote converts into ${quote.targetCurrency}, but the wallet holds ${wallet.currency}`,
+      );
+    }
+    const clearing = await this.clearingAccount(quote.sourceCurrency);
+
+    return this.fx.convert({
+      quoteId: input.quoteId,
+      reference: input.reference,
+      description: input.description,
+      sourceDebitAccountId: clearing.id,
+      targetCreditAccountId: wallet.availableAccountId,
+      beforeConvert: (manager) => this.lockActiveWallets(manager, [walletId]),
+    });
   }
 
   /** Funds out to an external destination: wallet available -> external clearing. */

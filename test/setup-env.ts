@@ -6,3 +6,11 @@ loadEnv({ quiet: true });
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_NAME = process.env.DATABASE_TEST_NAME ?? 'finstack_test';
+
+// Pin behaviour-affecting settings so results never depend on a developer's
+// local .env. Individual tests override these where they test the setting.
+process.env.DEFAULT_WALLET_CURRENCY = 'USD';
+process.env.ALLOWED_WALLET_CURRENCIES = 'USD,NGN';
+process.env.FX_SPREAD_BPS = '100';
+process.env.FX_QUOTE_TTL_SECONDS = '900';
+process.env.FX_RATE_MAX_AGE_SECONDS = '86400';

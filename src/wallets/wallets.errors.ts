@@ -37,3 +37,13 @@ export class InvalidCursorException extends AppException {
     );
   }
 }
+
+export class WalletCurrencyNotAllowedException extends AppException {
+  constructor(allowed: string[]) {
+    super(
+      'WALLET_CURRENCY_NOT_ALLOWED',
+      `Wallets can only be opened in: ${allowed.join(', ')}`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}

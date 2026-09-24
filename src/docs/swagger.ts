@@ -67,6 +67,7 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
       'Wallets',
       'Multi-currency wallets backed by the double-entry ledger',
     )
+    .addTag('FX', 'Exchange rates and locked conversion quotes')
     .addTag('Health', 'Liveness and readiness probes')
     .build();
 

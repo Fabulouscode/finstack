@@ -3,6 +3,7 @@ import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { appConfig } from './app.config';
 import { authConfig } from './auth.config';
 import { databaseConfig } from './database.config';
+import { fxConfig } from './fx.config';
 import { httpConfig } from './http.config';
 import { walletsConfig } from './wallets.config';
 
@@ -17,7 +18,14 @@ import { walletsConfig } from './wallets.config';
     NestConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [appConfig, authConfig, databaseConfig, httpConfig, walletsConfig],
+      load: [
+        appConfig,
+        authConfig,
+        databaseConfig,
+        fxConfig,
+        httpConfig,
+        walletsConfig,
+      ],
     }),
   ],
 })

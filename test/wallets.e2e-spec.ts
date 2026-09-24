@@ -187,3 +187,38 @@ describe('Wallets (e2e)', () => {
     expect(response.body).toMatchObject({ code: 'INVALID_CURSOR' });
   });
 });
+
+describe('Wallets: operator-restricted base currencies (e2e)', () => {
+  const originalEnv = process.env;
+  let app: INestApplication<App>;
+
+  beforeEach(async () => {
+    process.env = {
+      ...originalEnv,
+      DEFAULT_WALLET_CURRENCY: 'USD',
+      ALLOWED_WALLET_CURRENCIES: 'USD',
+    };
+    app = await createTestApp();
+    await resetDatabase(app.get(DataSource));
+  });
+
+  afterEach(async () => {
+    await app.close();
+    process.env = originalEnv;
+  });
+
+  it('refuses base currencies the operator has not allowed', async () => {
+    const { accessToken } = (await registerUser(app, 'ada@example.com')).tokens;
+
+    const response = await request(app.getHttpServer())
+      .post('/v1/wallets')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ currency: 'NGN' })
+      .expect(422);
+
+    expect(response.body).toMatchObject({
+      code: 'WALLET_CURRENCY_NOT_ALLOWED',
+      detail: 'Wallets can only be opened in: USD',
+    });
+  });
+});
