@@ -43,6 +43,8 @@ export function buildDataSourceOptions(
     logging: config.logging,
     applicationName: 'finstack',
     namingStrategy: new SnakeNamingStrategy(),
+    // gen_random_uuid() is built into PostgreSQL 13+; no extension required.
+    uuidExtension: 'pgcrypto',
     // Schema changes only ever happen through reviewed migrations.
     synchronize: false,
     migrationsRun: false,

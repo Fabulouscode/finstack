@@ -1,16 +1,10 @@
 import { INestApplication } from '@nestjs/common';
+import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import {
-  ApiResponseOptions,
-  DocumentBuilder,
-  getSchemaPath,
-  OpenAPIObject,
-  SwaggerModule,
-} from '@nestjs/swagger';
-import {
-  PROBLEM_JSON_CONTENT_TYPE,
   ProblemDetailsDto,
   ValidationProblemDetailsDto,
 } from '../common/http/problem-details';
+import { problemResponse } from './api-problem-response.decorator';
 
 export const SWAGGER_PATH = 'docs';
 export const SWAGGER_JSON_PATH = 'docs-json';
@@ -67,27 +61,14 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
         'Unexpected server error. Quote `requestId` when reporting it.',
       ),
     )
+    .addTag('Auth', 'Registration, sign-in and session tokens')
+    .addTag('Users', 'User accounts')
     .addTag('Health', 'Liveness and readiness probes')
     .build();
 
   return SwaggerModule.createDocument(app, config, {
     extraModels: [ProblemDetailsDto, ValidationProblemDetailsDto],
   });
-}
-
-function problemResponse(
-  status: number,
-  description: string,
-): ApiResponseOptions {
-  return {
-    status,
-    description,
-    content: {
-      [PROBLEM_JSON_CONTENT_TYPE]: {
-        schema: { $ref: getSchemaPath(ProblemDetailsDto) },
-      },
-    },
-  };
 }
 
 /** Serves Swagger UI at `/docs` and the raw OpenAPI document at `/docs-json`. */
