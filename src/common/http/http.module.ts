@@ -3,6 +3,11 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { HttpConfig, httpConfig } from '../../config/http.config';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+import {
+  AUTH_THROTTLER,
+  DEFAULT_THROTTLER,
+  isAuthRateLimited,
+} from './rate-limit';
 import { createValidationPipe } from './validation';
 
 /**
@@ -16,9 +21,15 @@ import { createValidationPipe } from './validation';
       useFactory: (config: HttpConfig) => ({
         throttlers: [
           {
-            name: 'default',
+            name: DEFAULT_THROTTLER,
             ttl: config.rateLimit.ttlMs,
             limit: config.rateLimit.max,
+          },
+          {
+            name: AUTH_THROTTLER,
+            ttl: config.rateLimit.ttlMs,
+            limit: config.rateLimit.authMax,
+            skipIf: (context) => !isAuthRateLimited(context),
           },
         ],
       }),

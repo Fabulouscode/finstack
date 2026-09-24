@@ -7,12 +7,14 @@ import {
   HealthCheckService,
   TypeOrmHealthIndicator,
 } from '@nestjs/terminus';
+import { Public } from '../auth/decorators/public.decorator';
 import { HealthCheckFilter } from './health-check.filter';
 
 // Probes are unversioned (/health/*) and never rate limited: orchestrators
 // poll them constantly and expect a stable URL.
 @ApiTags('Health')
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
+@Public()
 @SkipThrottle()
 @UseFilters(HealthCheckFilter)
 export class HealthController {

@@ -16,7 +16,7 @@ describe('httpConfig', () => {
     expect(httpConfig()).toEqual({
       corsOrigins: [],
       trustProxyHops: 0,
-      rateLimit: { ttlMs: 60_000, max: 100 },
+      rateLimit: { ttlMs: 60_000, max: 100, authMax: 10 },
     });
   });
 

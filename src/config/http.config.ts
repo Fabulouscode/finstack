@@ -39,6 +39,12 @@ class HttpEnvironmentVariables {
   @IsInt()
   @Min(1)
   RATE_LIMIT_MAX: number = 100;
+
+  /** Stricter per-endpoint limit for credential endpoints (login, register, refresh). */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  AUTH_RATE_LIMIT_MAX: number = 10;
 }
 
 export const httpConfig = registerAs('http', () => {
@@ -50,6 +56,7 @@ export const httpConfig = registerAs('http', () => {
     rateLimit: {
       ttlMs: env.RATE_LIMIT_TTL_SECONDS * 1000,
       max: env.RATE_LIMIT_MAX,
+      authMax: env.AUTH_RATE_LIMIT_MAX,
     },
   };
 });

@@ -10,6 +10,7 @@ import { Type } from 'class-transformer';
 import { IsInt, IsPositive, Matches, ValidateNested } from 'class-validator';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { Public } from '../src/auth/decorators/public.decorator';
 import { AppException } from '../src/common/http/app.exception';
 import { ProblemDetails } from '../src/common/http/problem-details';
 import { createTestApp } from './utils/create-test-app';
@@ -34,6 +35,7 @@ class TransferDto {
 }
 
 /** Test-only controller exercising the global HTTP pipeline. */
+@Public()
 @Controller('probe')
 class ProbeController {
   @Post('transfers')

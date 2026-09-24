@@ -64,6 +64,7 @@ services:
       <<: *database-env
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env (cp .env.example .env)}
     ports:
       - '${PORT:-3000}:3000'
     depends_on:
