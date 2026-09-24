@@ -14,3 +14,6 @@ process.env.ALLOWED_WALLET_CURRENCIES = 'USD,NGN';
 process.env.FX_SPREAD_BPS = '100';
 process.env.FX_QUOTE_TTL_SECONDS = '900';
 process.env.FX_RATE_MAX_AGE_SECONDS = '86400';
+process.env.PAYMENT_PROVIDERS = 'mock';
+process.env.DEFAULT_PAYMENT_PROVIDER = 'mock';
+process.env.MOCK_PROVIDER_WEBHOOK_SECRET = 'test-mock-webhook-secret';

@@ -6,6 +6,7 @@ import { databaseConfig } from './database.config';
 import { fxConfig } from './fx.config';
 import { httpConfig } from './http.config';
 import { idempotencyConfig } from './idempotency.config';
+import { paymentsConfig } from './payments.config';
 import { walletsConfig } from './wallets.config';
 
 /**
@@ -26,6 +27,7 @@ import { walletsConfig } from './wallets.config';
         fxConfig,
         httpConfig,
         idempotencyConfig,
+        paymentsConfig,
         walletsConfig,
       ],
     }),

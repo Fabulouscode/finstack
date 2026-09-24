@@ -247,14 +247,10 @@ export class WalletsService {
     walletId: string,
     input: { quoteId: string; reference: string; description: string },
   ): Promise<ConversionResult> {
-    const wallet = await this.getWallet(walletId);
-    const quote = await this.fx.getQuote(input.quoteId);
-    if (quote.targetCurrency !== wallet.currency) {
-      throw new CurrencyMismatchException(
-        `The quote converts into ${quote.targetCurrency}, but the wallet holds ${wallet.currency}`,
-      );
-    }
-    const clearing = await this.clearingAccount(quote.sourceCurrency);
+    const { wallet, clearing } = await this.prepareConversionDeposit(
+      walletId,
+      input.quoteId,
+    );
 
     return this.fx.convert({
       quoteId: input.quoteId,
@@ -303,6 +299,56 @@ export class WalletsService {
       targetCreditAccountId: to.availableAccountId,
       beforeConvert: (manager) =>
         this.lockActiveWallets(manager, [from.id, to.id]),
+    });
+  }
+
+  /**
+   * deposit() inside a caller-owned database transaction, so the credit
+   * commits atomically with the caller's records (e.g. payment settlement).
+   */
+  async depositWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    const wallet = await this.getWallet(walletId);
+    const clearing = await this.clearingAccount(wallet.currency);
+    await this.lockActiveWallets(manager, [walletId]);
+
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: [
+        { accountId: clearing.id, direction: Debit, amount: movement.amount },
+        {
+          accountId: wallet.availableAccountId,
+          direction: Credit,
+          amount: movement.amount,
+        },
+      ],
+    });
+  }
+
+  /** depositWithConversion() inside a caller-owned database transaction. */
+  async depositWithConversionWithin(
+    manager: EntityManager,
+    walletId: string,
+    input: { quoteId: string; reference: string; description: string },
+  ): Promise<ConversionResult> {
+    const { wallet, clearing } = await this.prepareConversionDeposit(
+      walletId,
+      input.quoteId,
+    );
+
+    return this.fx.convertWithin(manager, {
+      quoteId: input.quoteId,
+      reference: input.reference,
+      description: input.description,
+      sourceDebitAccountId: clearing.id,
+      targetCreditAccountId: wallet.availableAccountId,
+      beforeConvert: (m) => this.lockActiveWallets(m, [walletId]),
     });
   }
 
@@ -535,6 +581,23 @@ export class WalletsService {
     });
 
     return { wallet, balances: { available: 0n, pending: 0n, reserved: 0n } };
+  }
+
+  private async prepareConversionDeposit(
+    walletId: string,
+    quoteId: string,
+  ): Promise<{ wallet: Wallet; clearing: LedgerAccount }> {
+    const wallet = await this.getWallet(walletId);
+    const quote = await this.fx.getQuote(quoteId);
+    if (quote.targetCurrency !== wallet.currency) {
+      throw new CurrencyMismatchException(
+        `The quote converts into ${quote.targetCurrency}, but the wallet holds ${wallet.currency}`,
+      );
+    }
+    return {
+      wallet,
+      clearing: await this.clearingAccount(quote.sourceCurrency),
+    };
   }
 
   private async findOwned(userId: string, walletId: string): Promise<Wallet> {

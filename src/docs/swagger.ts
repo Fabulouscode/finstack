@@ -71,6 +71,11 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
       'Transactions',
       'Transfers and transaction history (money-moving calls need an Idempotency-Key)',
     )
+    .addTag(
+      'Payments',
+      'Incoming payments via providers, with FX into the primary wallet',
+    )
+    .addTag('Webhooks', 'Signed provider callbacks')
     .addTag('FX', 'Exchange rates and locked conversion quotes')
     .addTag('Health', 'Liveness and readiness probes')
     .build();

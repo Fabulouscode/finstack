@@ -14,7 +14,9 @@ export async function createTestApp(
     controllers: options.controllers ?? [],
   }).compile();
 
-  const app = moduleRef.createNestApplication<NestExpressApplication>();
+  const app = moduleRef.createNestApplication<NestExpressApplication>({
+    rawBody: true,
+  });
   configureApp(app);
   await app.init();
 

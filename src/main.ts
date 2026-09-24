@@ -8,7 +8,10 @@ import { appConfig } from './config/app.config';
 import { SWAGGER_PATH } from './docs/swagger';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // Webhook signatures are computed over the exact bytes received.
+    rawBody: true,
+  });
   const config = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
 
   configureApp(app);

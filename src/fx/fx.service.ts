@@ -157,98 +157,110 @@ export class FxService {
    * even under concurrent attempts. Retrying with the same reference returns
    * the original result.
    */
-  async convert(input: ConvertInput): Promise<ConversionResult> {
+  convert(input: ConvertInput): Promise<ConversionResult> {
+    return this.dataSource.transaction((manager) =>
+      this.convertWithin(manager, input),
+    );
+  }
+
+  /**
+   * Same as convert(), inside a caller-owned database transaction, so the
+   * conversion commits atomically with the caller's records (e.g. a payment
+   * settlement).
+   */
+  async convertWithin(
+    manager: EntityManager,
+    input: ConvertInput,
+  ): Promise<ConversionResult> {
     const preview = await this.getQuote(input.quoteId, input.userId);
     const accounts = await this.systemAccounts(
       preview.sourceCurrency,
       preview.targetCurrency,
     );
 
-    return this.dataSource.transaction(async (manager) => {
-      await input.beforeConvert?.(manager);
+    await input.beforeConvert?.(manager);
 
-      const quote = await manager
-        .createQueryBuilder(FxQuote, 'quote')
-        .setLock('pessimistic_write')
-        .where('quote.id = :id', { id: input.quoteId })
-        .getOneOrFail();
+    const quote = await manager
+      .createQueryBuilder(FxQuote, 'quote')
+      .setLock('pessimistic_write')
+      .where('quote.id = :id', { id: input.quoteId })
+      .getOneOrFail();
 
-      if (quote.consumedAt !== null) {
-        if (quote.conversionReference === input.reference) {
-          return this.replay(manager, quote);
-        }
-        throw new FxQuoteAlreadyUsedException();
+    if (quote.consumedAt !== null) {
+      if (quote.conversionReference === input.reference) {
+        return this.replay(manager, quote);
       }
-      if (quote.expiresAt.getTime() <= Date.now()) {
-        throw new FxQuoteExpiredException();
-      }
+      throw new FxQuoteAlreadyUsedException();
+    }
+    if (quote.expiresAt.getTime() <= Date.now()) {
+      throw new FxQuoteExpiredException();
+    }
 
-      const sourceLeg = await this.ledger.postWithin(manager, {
-        reference: `${input.reference}:fx-source`,
-        description: `${input.description} (${quote.sourceCurrency} leg)`,
-        currency: quote.sourceCurrency,
-        metadata: { fxQuoteId: quote.id },
-        entries: [
-          {
-            accountId: input.sourceDebitAccountId,
-            direction: Debit,
-            amount: quote.sourceAmount,
-          },
-          {
-            accountId: accounts.sourcePosition,
-            direction: Credit,
-            amount: quote.sourceAmount,
-          },
-        ],
-      });
-
-      const spread = quote.grossTargetAmount - quote.targetAmount;
-      const targetLeg = await this.ledger.postWithin(manager, {
-        reference: `${input.reference}:fx-target`,
-        description: `${input.description} (${quote.targetCurrency} leg)`,
-        currency: quote.targetCurrency,
-        metadata: {
-          fxQuoteId: quote.id,
-          rate: quote.rate,
-          spreadBps: quote.spreadBps,
+    const sourceLeg = await this.ledger.postWithin(manager, {
+      reference: `${input.reference}:fx-source`,
+      description: `${input.description} (${quote.sourceCurrency} leg)`,
+      currency: quote.sourceCurrency,
+      metadata: { fxQuoteId: quote.id },
+      entries: [
+        {
+          accountId: input.sourceDebitAccountId,
+          direction: Debit,
+          amount: quote.sourceAmount,
         },
-        entries: [
-          {
-            accountId: accounts.targetPosition,
-            direction: Debit,
-            amount: quote.grossTargetAmount,
-          },
-          {
-            accountId: input.targetCreditAccountId,
-            direction: Credit,
-            amount: quote.targetAmount,
-          },
-          ...(spread > 0n
-            ? [
-                {
-                  accountId: accounts.targetRevenue,
-                  direction: Credit,
-                  amount: spread,
-                },
-              ]
-            : []),
-        ],
-      });
-
-      await manager.update(FxQuote, quote.id, {
-        consumedAt: new Date(),
-        conversionReference: input.reference,
-        sourceTransactionId: sourceLeg.transaction.id,
-        targetTransactionId: targetLeg.transaction.id,
-      });
-
-      return {
-        quote: await manager.findOneByOrFail(FxQuote, { id: quote.id }),
-        sourceLeg: sourceLeg.transaction,
-        targetLeg: targetLeg.transaction,
-        replayed: false,
-      };
+        {
+          accountId: accounts.sourcePosition,
+          direction: Credit,
+          amount: quote.sourceAmount,
+        },
+      ],
     });
+
+    const spread = quote.grossTargetAmount - quote.targetAmount;
+    const targetLeg = await this.ledger.postWithin(manager, {
+      reference: `${input.reference}:fx-target`,
+      description: `${input.description} (${quote.targetCurrency} leg)`,
+      currency: quote.targetCurrency,
+      metadata: {
+        fxQuoteId: quote.id,
+        rate: quote.rate,
+        spreadBps: quote.spreadBps,
+      },
+      entries: [
+        {
+          accountId: accounts.targetPosition,
+          direction: Debit,
+          amount: quote.grossTargetAmount,
+        },
+        {
+          accountId: input.targetCreditAccountId,
+          direction: Credit,
+          amount: quote.targetAmount,
+        },
+        ...(spread > 0n
+          ? [
+              {
+                accountId: accounts.targetRevenue,
+                direction: Credit,
+                amount: spread,
+              },
+            ]
+          : []),
+      ],
+    });
+
+    await manager.update(FxQuote, quote.id, {
+      consumedAt: new Date(),
+      conversionReference: input.reference,
+      sourceTransactionId: sourceLeg.transaction.id,
+      targetTransactionId: targetLeg.transaction.id,
+    });
+
+    return {
+      quote: await manager.findOneByOrFail(FxQuote, { id: quote.id }),
+      sourceLeg: sourceLeg.transaction,
+      targetLeg: targetLeg.transaction,
+      replayed: false,
+    };
   }
 
   private async replay(

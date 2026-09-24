@@ -7,9 +7,11 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { LedgerModule } from './ledger/ledger.module';
+import { PaymentsModule } from './payments/payments.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallets/wallets.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { WalletsModule } from './wallets/wallets.module';
     WalletsModule,
     FxModule,
     TransactionsModule,
+    PaymentsModule,
+    WebhooksModule,
   ],
 })
 export class AppModule {}

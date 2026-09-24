@@ -23,3 +23,11 @@ export const SUPPORTED_CURRENCIES = Object.keys(CURRENCIES) as CurrencyCode[];
 export function isSupportedCurrency(value: string): value is CurrencyCode {
   return Object.hasOwn(CURRENCIES, value);
 }
+
+/** Narrows a stored currency string, failing loudly if it is not supported. */
+export function toCurrencyCode(value: string): CurrencyCode {
+  if (!isSupportedCurrency(value)) {
+    throw new Error(`Unsupported currency "${value}"`);
+  }
+  return value;
+}
