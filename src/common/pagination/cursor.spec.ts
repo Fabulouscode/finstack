@@ -1,7 +1,6 @@
-import { decodeCursor, encodeCursor } from './entry-cursor';
-import { InvalidCursorException } from './wallets.errors';
+import { decodeCursor, encodeCursor, InvalidCursorException } from './cursor';
 
-describe('entry cursor', () => {
+describe('pagination cursor', () => {
   const cursor = {
     createdAt: new Date('2026-09-24T10:00:00.123Z'),
     id: '6a1f2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d',

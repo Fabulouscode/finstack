@@ -48,6 +48,10 @@ export class UsersService {
     return this.users.findOneBy({ id });
   }
 
+  findByEmail(email: string): Promise<User | null> {
+    return this.users.findOneBy({ email: UsersService.normalizeEmail(email) });
+  }
+
   /** The only way to load a password hash. Use for credential checks only. */
   findByEmailWithPasswordHash(email: string): Promise<User | null> {
     return this.users

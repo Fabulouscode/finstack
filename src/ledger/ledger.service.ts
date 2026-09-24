@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
+import type { Cursor } from '../common/pagination/cursor';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { LedgerAccount } from './ledger-account.entity';
 import { LedgerEntry } from './ledger-entry.entity';
@@ -50,10 +51,7 @@ export interface EntryPage {
   next: EntryCursor | null;
 }
 
-export interface EntryCursor {
-  createdAt: Date;
-  id: string;
-}
+export type EntryCursor = Cursor;
 
 export interface AccountEntry {
   id: string;

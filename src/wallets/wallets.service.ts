@@ -199,6 +199,14 @@ export class WalletsService {
     return { wallet: primary, requiresConversion: true };
   }
 
+  findWallet(userId: string, currency: string): Promise<Wallet | null> {
+    return this.wallets.findOneBy({ userId, currency });
+  }
+
+  findPrimaryWallet(userId: string): Promise<Wallet | null> {
+    return this.wallets.findOneBy({ userId, isPrimary: true });
+  }
+
   async listEntriesForUser(
     userId: string,
     walletId: string,
@@ -344,6 +352,43 @@ export class WalletsService {
         amount: movement.amount,
       },
     ]);
+  }
+
+  /**
+   * Wallet-to-wallet movement inside a caller-owned database transaction, so
+   * it commits atomically with the caller's own records (e.g. a transfer).
+   */
+  async transferWithin(
+    manager: EntityManager,
+    from: Wallet,
+    to: Wallet,
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    if (from.currency !== to.currency) {
+      throw new CurrencyMismatchException(
+        'Both wallets must use the same currency',
+      );
+    }
+    await this.lockActiveWallets(manager, [from.id, to.id]);
+
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: from.currency,
+      metadata: { ...movement.metadata, walletIds: [from.id, to.id] },
+      entries: [
+        {
+          accountId: from.availableAccountId,
+          direction: Debit,
+          amount: movement.amount,
+        },
+        {
+          accountId: to.availableAccountId,
+          direction: Credit,
+          amount: movement.amount,
+        },
+      ],
+    });
   }
 
   /** Puts funds on hold: available -> reserved. */

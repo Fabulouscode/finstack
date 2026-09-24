@@ -30,7 +30,7 @@ import {
   WalletEntryDto,
   WalletResponseDto,
 } from './dto/wallet.dto';
-import { decodeCursor, encodeCursor } from './entry-cursor';
+import { decodeCursor, encodeCursor } from '../common/pagination/cursor';
 import { WalletsService } from './wallets.service';
 
 @ApiTags('Wallets')

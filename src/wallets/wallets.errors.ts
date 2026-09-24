@@ -24,16 +24,6 @@ export class WalletNotActiveException extends AppException {
   }
 }
 
-export class InvalidCursorException extends AppException {
-  constructor() {
-    super(
-      'INVALID_CURSOR',
-      'The pagination cursor is invalid',
-      HttpStatus.BAD_REQUEST,
-    );
-  }
-}
-
 export class WalletCurrencyNotAllowedException extends AppException {
   constructor(allowed: string[]) {
     super(
