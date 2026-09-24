@@ -158,6 +158,25 @@ curl localhost:3000/v1/users/me -H "Authorization: Bearer <accessToken>"
 - Every route requires a Bearer token by default. Mark public routes with `@Public()`, restrict by platform role with `@Roles(UserRole.Admin)`, and read the caller with `@CurrentUser()`.
 - Details and trade-offs: [ADR 0006](./docs/adr/0006-authentication-and-sessions.md).
 
+## Wallets and ledger
+
+Every amount is an **integer in minor units** (kobo, cents) plus an ISO 4217 currency: `150000` NGN is ₦1,500.00. Supported currencies are listed in `src/common/money/currency.ts`.
+
+| Endpoint | Description |
+| --- | --- |
+| `POST /v1/wallets` | Open a wallet: `{ "currency": "NGN" }`. One per currency per user. |
+| `GET /v1/wallets` | List my wallets with balances |
+| `GET /v1/wallets/:id` | One wallet with `available`, `pending` and `reserved` balances |
+| `GET /v1/wallets/:id/entries?limit=20&cursor=...` | Ledger history, newest first, cursor-paginated |
+
+**How it works:**
+
+- A wallet stores no amounts. Each balance (available, pending, reserved) is an account in a **double-entry ledger**, and every change is a balanced posting (`LedgerService.post`).
+- `WalletsService` provides `deposit`, `withdraw`, `transfer`, `reserve` and `release`. Each takes a `reference` and is idempotent: retrying with the same reference never moves money twice. HTTP endpoints for moving money arrive with the idempotency module.
+- The database enforces the rules even if application code is bypassed: balanced transactions, no overdrafts, immutable history, and balances that change only through entries. See [ADR 0007](./docs/adr/0007-ledger-and-money.md).
+- Concurrent operations on one balance are serialised with row locks taken in a consistent order. Two simultaneous ₦7,000 withdrawals from ₦10,000: exactly one succeeds.
+- Query performance: [ledger entry pagination](./docs/performance/ledger-entries-pagination.md) (keyset vs OFFSET, with `EXPLAIN ANALYZE`).
+
 ## API documentation (Swagger)
 
 | URL | Content |
@@ -199,8 +218,9 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 - [ ] **Phase 1 — Financial foundation**
   - [x] Config, PostgreSQL/TypeORM, Docker, HTTP foundation, Swagger
   - [x] Users and authentication (JWT, rotating refresh tokens, roles)
+  - [x] Double-entry ledger and multi-currency wallets
+  - [ ] Transactions and idempotency (money-moving endpoints)
   - [ ] Organizations, permissions, API keys
-  - [ ] Wallets, ledger, transactions, idempotency
 - [ ] **Phase 2 — Payments:** provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
