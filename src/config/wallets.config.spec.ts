@@ -14,6 +14,7 @@ describe('walletsConfig', () => {
 
   it('defaults to USD only: users cannot choose', () => {
     expect(walletsConfig()).toEqual({
+      walletsPerOwner: 'single',
       defaultCurrency: 'USD',
       allowedCurrencies: ['USD'],
     });
@@ -22,7 +23,7 @@ describe('walletsConfig', () => {
   it('lets the operator pick another single base currency', () => {
     process.env.DEFAULT_WALLET_CURRENCY = 'NGN';
 
-    expect(walletsConfig()).toEqual({
+    expect(walletsConfig()).toMatchObject({
       defaultCurrency: 'NGN',
       allowedCurrencies: ['NGN'],
     });
@@ -42,7 +43,19 @@ describe('walletsConfig', () => {
     );
   });
 
+  it('supports a wallet per currency', () => {
+    process.env.WALLETS_PER_OWNER = 'multiple';
+    process.env.ALLOWED_WALLET_CURRENCIES = 'USD,NGN';
+
+    expect(walletsConfig()).toEqual({
+      walletsPerOwner: 'multiple',
+      defaultCurrency: 'USD',
+      allowedCurrencies: ['USD', 'NGN'],
+    });
+  });
+
   it.each([
+    ['WALLETS_PER_OWNER', 'many'],
     ['DEFAULT_WALLET_CURRENCY', 'XXX'],
     ['ALLOWED_WALLET_CURRENCIES', 'USD,XXX'],
     ['ALLOWED_WALLET_CURRENCIES', ' , '],

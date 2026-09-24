@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { CurrencyCode } from '../common/money/currency';
-import { walletsConfig } from '../config/wallets.config';
+import { walletsConfig, WalletsPerOwner } from '../config/wallets.config';
 import type { WalletsConfig } from '../config/wallets.config';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { ConversionResult, FxService } from '../fx/fx.service';
@@ -34,6 +34,12 @@ export interface WalletWithBalances {
   balances: WalletBalances;
 }
 
+export interface CreditTarget {
+  wallet: Wallet;
+  /** True when the money must be converted into the (primary) wallet's currency. */
+  requiresConversion: boolean;
+}
+
 export interface MoneyMovement {
   /** Minor units, strictly positive. */
   amount: bigint;
@@ -59,9 +65,12 @@ export class WalletsService {
   ) {}
 
   /**
-   * Opens the user's wallet and its three ledger accounts atomically. Each
-   * user has exactly one wallet; the currency defaults to
-   * DEFAULT_WALLET_CURRENCY and cannot change afterwards.
+   * Opens a wallet and its three ledger accounts atomically.
+   *
+   * - `single` mode: one wallet per user, always primary. The partial unique
+   *   index on the primary flag makes this hold under concurrent requests.
+   * - `multiple` mode: one wallet per allowed currency. The first wallet
+   *   becomes primary; losing a race to be primary retries as non-primary.
    */
   async create(
     userId: string,
@@ -72,48 +81,53 @@ export class WalletsService {
         this.config.allowedCurrencies,
       );
     }
-
-    try {
-      const wallet = await this.dataSource.transaction(async (manager) => {
-        const account = (purpose: string): Promise<LedgerAccount> =>
-          this.ledger.createAccount(
-            {
-              name: `Wallet ${purpose} (${currency})`,
-              type: LedgerAccountType.Liability,
-              currency,
-            },
-            manager,
+    const single = this.config.walletsPerOwner === WalletsPerOwner.Single;
+    const alreadyExists = (): WalletAlreadyExistsException =>
+      single
+        ? new WalletAlreadyExistsException()
+        : new WalletAlreadyExistsException(
+            `A ${currency} wallet already exists`,
           );
 
-        const [available, pending, reserved] = await Promise.all([
-          account('available'),
-          account('pending'),
-          account('reserved'),
-        ]);
-
-        return manager.save(
-          manager.create(Wallet, {
-            userId,
-            currency,
-            status: WalletStatus.Active,
-            availableAccountId: available.id,
-            pendingAccountId: pending.id,
-            reservedAccountId: reserved.id,
-          }),
-        );
-      });
-
-      return { wallet, balances: { available: 0n, pending: 0n, reserved: 0n } };
+    try {
+      return await this.insertWallet(
+        userId,
+        currency,
+        single ? true : 'if-first',
+      );
     } catch (error) {
-      if (isUniqueViolation(error, 'uq_wallets_user_id')) {
-        throw new WalletAlreadyExistsException();
+      if (isUniqueViolation(error, 'uq_wallets_user_currency')) {
+        throw alreadyExists();
+      }
+      if (isUniqueViolation(error, 'uq_wallets_user_primary')) {
+        if (single) {
+          throw alreadyExists();
+        }
+        // A concurrent request created the first (primary) wallet.
+        return this.insertWallet(userId, currency, false).catch(
+          (retryError: unknown) => {
+            if (isUniqueViolation(retryError, 'uq_wallets_user_currency')) {
+              throw alreadyExists();
+            }
+            throw retryError;
+          },
+        );
       }
       throw error;
     }
   }
 
-  async getMine(userId: string): Promise<WalletWithBalances> {
-    const wallet = await this.wallets.findOneBy({ userId });
+  /** Primary wallet first, then by age. */
+  async listForUser(userId: string): Promise<WalletWithBalances[]> {
+    const wallets = await this.wallets.find({
+      where: { userId },
+      order: { isPrimary: 'DESC', createdAt: 'ASC' },
+    });
+    return this.withBalances(wallets);
+  }
+
+  async getPrimary(userId: string): Promise<WalletWithBalances> {
+    const wallet = await this.wallets.findOneBy({ userId, isPrimary: true });
     if (!wallet) {
       throw new WalletNotFoundException();
     }
@@ -125,6 +139,64 @@ export class WalletsService {
     walletId: string,
   ): Promise<WalletWithBalances> {
     return this.withBalance(await this.findOwned(userId, walletId));
+  }
+
+  /** Makes another active wallet the one that receives converted payments. */
+  async setPrimary(
+    userId: string,
+    walletId: string,
+  ): Promise<WalletWithBalances> {
+    await this.dataSource.transaction(async (manager) => {
+      // Lock the user's wallets so concurrent switches serialise.
+      const wallets = await manager
+        .createQueryBuilder(Wallet, 'wallet')
+        .where('wallet.userId = :userId', { userId })
+        .orderBy('wallet.id')
+        .setLock('pessimistic_write')
+        .getMany();
+
+      const target = wallets.find((wallet) => wallet.id === walletId);
+      if (!target) {
+        throw new WalletNotFoundException();
+      }
+      if (target.isPrimary) {
+        return;
+      }
+      if (target.status !== WalletStatus.Active) {
+        throw new WalletNotActiveException();
+      }
+      // Clear first: the partial unique index allows only one primary.
+      await manager.update(
+        Wallet,
+        { userId, isPrimary: true },
+        { isPrimary: false },
+      );
+      await manager.update(Wallet, { id: walletId }, { isPrimary: true });
+    });
+
+    return this.getForUser(userId, walletId);
+  }
+
+  /**
+   * Where incoming money in `currency` should land (the crediting rule):
+   * the user's wallet in that currency if there is one, otherwise the
+   * primary wallet, which then requires an FX conversion.
+   */
+  async resolveCreditTarget(
+    userId: string,
+    currency: string,
+  ): Promise<CreditTarget> {
+    const wallets = await this.wallets.findBy({ userId });
+
+    const exact = wallets.find((wallet) => wallet.currency === currency);
+    if (exact) {
+      return { wallet: exact, requiresConversion: false };
+    }
+    const primary = wallets.find((wallet) => wallet.isPrimary);
+    if (!primary) {
+      throw new WalletNotFoundException();
+    }
+    return { wallet: primary, requiresConversion: true };
   }
 
   async listEntriesForUser(
@@ -159,7 +231,7 @@ export class WalletsService {
   }
 
   /**
-   * External funds in a foreign currency, converted into the wallet's base
+   * External funds in a foreign currency, converted into the wallet's
    * currency at a locked FX quote (e.g. ₦15,500 paid -> $9.90 credited).
    * Idempotent by reference; the quote is consumed exactly once.
    */
@@ -186,6 +258,46 @@ export class WalletsService {
     });
   }
 
+  /**
+   * Converts between two of the user's own wallets at a quote the user
+   * obtained (e.g. NGN wallet -> USD wallet). Idempotent by reference.
+   */
+  async convertBetweenWallets(
+    userId: string,
+    input: {
+      fromWalletId: string;
+      toWalletId: string;
+      quoteId: string;
+      reference: string;
+      description: string;
+    },
+  ): Promise<ConversionResult> {
+    const [from, to] = await Promise.all([
+      this.findOwned(userId, input.fromWalletId),
+      this.findOwned(userId, input.toWalletId),
+    ]);
+    const quote = await this.fx.getQuote(input.quoteId, userId);
+    if (
+      quote.sourceCurrency !== from.currency ||
+      quote.targetCurrency !== to.currency
+    ) {
+      throw new CurrencyMismatchException(
+        `The quote converts ${quote.sourceCurrency} to ${quote.targetCurrency}, but the wallets hold ${from.currency} and ${to.currency}`,
+      );
+    }
+
+    return this.fx.convert({
+      quoteId: quote.id,
+      userId,
+      reference: input.reference,
+      description: input.description,
+      sourceDebitAccountId: from.availableAccountId,
+      targetCreditAccountId: to.availableAccountId,
+      beforeConvert: (manager) =>
+        this.lockActiveWallets(manager, [from.id, to.id]),
+    });
+  }
+
   /** Funds out to an external destination: wallet available -> external clearing. */
   async withdraw(
     walletId: string,
@@ -204,7 +316,7 @@ export class WalletsService {
     ]);
   }
 
-  /** Wallet to wallet; both wallets must share a base currency. */
+  /** Wallet to wallet in the same currency. */
   async transfer(
     fromWalletId: string,
     toWalletId: string,
@@ -338,6 +450,48 @@ export class WalletsService {
     return wallet;
   }
 
+  private async insertWallet(
+    userId: string,
+    currency: CurrencyCode,
+    primary: boolean | 'if-first',
+  ): Promise<WalletWithBalances> {
+    const wallet = await this.dataSource.transaction(async (manager) => {
+      const isPrimary =
+        primary === 'if-first'
+          ? !(await manager.existsBy(Wallet, { userId, isPrimary: true }))
+          : primary;
+
+      const account = (purpose: string): Promise<LedgerAccount> =>
+        this.ledger.createAccount(
+          {
+            name: `Wallet ${purpose} (${currency})`,
+            type: LedgerAccountType.Liability,
+            currency,
+          },
+          manager,
+        );
+      const [available, pending, reserved] = await Promise.all([
+        account('available'),
+        account('pending'),
+        account('reserved'),
+      ]);
+
+      return manager.save(
+        manager.create(Wallet, {
+          userId,
+          currency,
+          status: WalletStatus.Active,
+          isPrimary,
+          availableAccountId: available.id,
+          pendingAccountId: pending.id,
+          reservedAccountId: reserved.id,
+        }),
+      );
+    });
+
+    return { wallet, balances: { available: 0n, pending: 0n, reserved: 0n } };
+  }
+
   private async findOwned(userId: string, walletId: string): Promise<Wallet> {
     const wallet = await this.wallets.findOneBy({ id: walletId, userId });
     if (!wallet) {
@@ -346,24 +500,36 @@ export class WalletsService {
     return wallet;
   }
 
-  /** Loads the three balances in a single query. */
   private async withBalance(wallet: Wallet): Promise<WalletWithBalances> {
+    const [result] = await this.withBalances([wallet]);
+    if (!result) {
+      throw new WalletNotFoundException();
+    }
+    return result;
+  }
+
+  /** Loads all balances of all given wallets in a single query. */
+  private async withBalances(wallets: Wallet[]): Promise<WalletWithBalances[]> {
+    if (wallets.length === 0) return [];
+
     const accounts = await this.dataSource.manager.findBy(LedgerAccount, {
-      id: In([
-        wallet.availableAccountId,
-        wallet.pendingAccountId,
-        wallet.reservedAccountId,
-      ]),
+      id: In(
+        wallets.flatMap((w) => [
+          w.availableAccountId,
+          w.pendingAccountId,
+          w.reservedAccountId,
+        ]),
+      ),
     });
     const balance = new Map(accounts.map((a) => [a.id, a.balance]));
 
-    return {
+    return wallets.map((wallet) => ({
       wallet,
       balances: {
         available: balance.get(wallet.availableAccountId) ?? 0n,
         pending: balance.get(wallet.pendingAccountId) ?? 0n,
         reserved: balance.get(wallet.reservedAccountId) ?? 0n,
       },
-    };
+    }));
   }
 }

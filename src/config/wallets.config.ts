@@ -1,6 +1,12 @@
 import { registerAs } from '@nestjs/config';
 import { Transform } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsOptional } from 'class-validator';
+import {
+  ArrayNotEmpty,
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsOptional,
+} from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../common/money/currency';
 import type { CurrencyCode } from '../common/money/currency';
 import { ConfigValidationError, validateConfig } from './validate-config';
@@ -13,8 +19,18 @@ const toList = ({ value }: { value: unknown }): unknown =>
         .filter((item) => item.length > 0)
     : value;
 
+export enum WalletsPerOwner {
+  /** One wallet per user; foreign-currency payments convert into it. */
+  Single = 'single',
+  /** A wallet per allowed currency; one of them is the primary wallet. */
+  Multiple = 'multiple',
+}
+
 class WalletsEnvironmentVariables {
-  /** Base currency for wallets opened without an explicit currency. */
+  @IsEnum(WalletsPerOwner)
+  WALLETS_PER_OWNER: WalletsPerOwner = WalletsPerOwner.Single;
+
+  /** Currency of the first/primary wallet when none is specified. */
   @IsIn(SUPPORTED_CURRENCIES)
   DEFAULT_WALLET_CURRENCY: CurrencyCode = 'USD';
 
@@ -47,6 +63,7 @@ export const walletsConfig = registerAs('wallets', () => {
   }
 
   return {
+    walletsPerOwner: env.WALLETS_PER_OWNER,
     defaultCurrency: env.DEFAULT_WALLET_CURRENCY,
     allowedCurrencies: [...new Set(allowed)],
   };

@@ -25,7 +25,7 @@ export class CreateWalletRequestDto {
     enum: SUPPORTED_CURRENCIES,
     example: 'USD',
     description:
-      'Base currency of the wallet. Defaults to DEFAULT_WALLET_CURRENCY (USD). Cannot be changed later.',
+      'Currency of the wallet. Defaults to DEFAULT_WALLET_CURRENCY (USD); must be in ALLOWED_WALLET_CURRENCIES. Cannot be changed later.',
   })
   // Only an absent field is optional: @IsOptional() would also let an
   // explicit null through, bypassing the default and failing at the database.
@@ -87,6 +87,13 @@ export class WalletResponseDto {
   @ApiProperty({ enum: WalletStatus, example: WalletStatus.Active })
   status: WalletStatus;
 
+  @ApiProperty({
+    description:
+      'The primary wallet receives payments in currencies the user has no wallet for, after FX conversion.',
+    example: true,
+  })
+  isPrimary: boolean;
+
   @ApiProperty({ type: WalletBalancesDto })
   balances: WalletBalancesDto;
 
@@ -98,6 +105,7 @@ export class WalletResponseDto {
       id: wallet.id,
       currency: wallet.currency,
       status: wallet.status,
+      isPrimary: wallet.isPrimary,
       balances: {
         available: toApiAmount(balances.available),
         pending: toApiAmount(balances.pending),

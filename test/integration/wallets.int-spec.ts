@@ -4,6 +4,9 @@ import {
   CurrencyMismatchException,
   InsufficientFundsException,
 } from '../../src/ledger/ledger.errors';
+import { AdminRateProvider } from '../../src/fx/admin-rate.provider';
+import { FxQuote } from '../../src/fx/fx-quote.entity';
+import { FxService } from '../../src/fx/fx.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { UsersModule } from '../../src/users/users.module';
 import { UsersService } from '../../src/users/users.service';
@@ -100,7 +103,7 @@ describe('WalletsService (integration)', () => {
       const { wallet } = await wallets.create(aliceId);
 
       expect(wallet.currency).toBe('USD');
-      await expect(wallets.getMine(aliceId)).resolves.toMatchObject({
+      await expect(wallets.getPrimary(aliceId)).resolves.toMatchObject({
         wallet: { id: wallet.id },
       });
     });
@@ -129,13 +132,48 @@ describe('WalletsService (integration)', () => {
       expect(Number(row?.count)).toBe(3);
     });
 
+    it('keeps one wallet per user in single mode, even for concurrent requests in different currencies', async () => {
+      const results = await Promise.allSettled([
+        wallets.create(aliceId, 'USD'),
+        wallets.create(aliceId, 'NGN'),
+      ]);
+
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const rejected = results.find(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+      expect(rejected?.reason).toBeInstanceOf(WalletAlreadyExistsException);
+      await expect(wallets.listForUser(aliceId)).resolves.toHaveLength(1);
+    });
+
+    it('makes the single wallet primary and the credit target for any currency', async () => {
+      const { wallet } = await wallets.create(aliceId, 'USD');
+
+      expect(wallet.isPrimary).toBe(true);
+      await expect(
+        wallets.resolveCreditTarget(aliceId, 'USD'),
+      ).resolves.toMatchObject({
+        wallet: { id: wallet.id },
+        requiresConversion: false,
+      });
+      await expect(
+        wallets.resolveCreditTarget(aliceId, 'NGN'),
+      ).resolves.toMatchObject({
+        wallet: { id: wallet.id },
+        requiresConversion: true,
+      });
+      await expect(wallets.resolveCreditTarget(bobId, 'USD')).rejects.toThrow(
+        WalletNotFoundException,
+      );
+    });
+
     it('hides wallets owned by other users', async () => {
       const { wallet } = await wallets.create(aliceId, 'NGN');
 
       await expect(wallets.getForUser(bobId, wallet.id)).rejects.toThrow(
         WalletNotFoundException,
       );
-      await expect(wallets.getMine(bobId)).rejects.toThrow(
+      await expect(wallets.getPrimary(bobId)).rejects.toThrow(
         WalletNotFoundException,
       );
     });
@@ -268,6 +306,195 @@ describe('WalletsService (integration)', () => {
         'dep-2',
         'dep-1',
       ]);
+    });
+  });
+});
+
+describe('WalletsService in multiple mode (integration)', () => {
+  const originalEnv = process.env;
+  let moduleRef: TestingModule;
+  let wallets: WalletsService;
+  let ledger: LedgerService;
+  let dataSource: DataSource;
+  let userId: string;
+
+  beforeAll(async () => {
+    process.env = {
+      ...originalEnv,
+      WALLETS_PER_OWNER: 'multiple',
+      ALLOWED_WALLET_CURRENCIES: 'USD,NGN,EUR',
+    };
+    moduleRef = await createTestModule([UsersModule, WalletsModule]);
+    wallets = moduleRef.get(WalletsService);
+    ledger = moduleRef.get(LedgerService);
+    dataSource = moduleRef.get(DataSource);
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(dataSource);
+    userId = (
+      await moduleRef.get(UsersService).create({
+        email: 'ada@example.com',
+        passwordHash: 'x',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      })
+    ).id;
+  });
+
+  afterEach(async () => {
+    await expect(ledger.findBalanceDiscrepancies()).resolves.toEqual([]);
+  });
+
+  afterAll(async () => {
+    await moduleRef.close();
+    process.env = originalEnv;
+  });
+
+  it('opens one wallet per currency; the first is primary', async () => {
+    const usd = (await wallets.create(userId, 'USD')).wallet;
+    const ngn = (await wallets.create(userId, 'NGN')).wallet;
+
+    expect(usd.isPrimary).toBe(true);
+    expect(ngn.isPrimary).toBe(false);
+    await expect(wallets.create(userId, 'NGN')).rejects.toThrow(
+      WalletAlreadyExistsException,
+    );
+    const listed = await wallets.listForUser(userId);
+    expect(listed.map(({ wallet }) => wallet.currency)).toEqual(['USD', 'NGN']);
+  });
+
+  it('ends up with exactly one primary when the first wallets are created concurrently', async () => {
+    const results = await Promise.allSettled(
+      ['USD', 'NGN', 'EUR'].map((currency) =>
+        wallets.create(userId, currency as 'USD' | 'NGN' | 'EUR'),
+      ),
+    );
+
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+    const listed = await wallets.listForUser(userId);
+    expect(listed).toHaveLength(3);
+    expect(listed.filter(({ wallet }) => wallet.isPrimary)).toHaveLength(1);
+  });
+
+  it('switches the primary wallet', async () => {
+    await wallets.create(userId, 'USD');
+    const ngn = (await wallets.create(userId, 'NGN')).wallet;
+
+    await wallets.setPrimary(userId, ngn.id);
+
+    await expect(wallets.getPrimary(userId)).resolves.toMatchObject({
+      wallet: { id: ngn.id },
+    });
+    const primaries = (await wallets.listForUser(userId)).filter(
+      ({ wallet }) => wallet.isPrimary,
+    );
+    expect(primaries).toHaveLength(1);
+  });
+
+  it('refuses to make a frozen wallet primary', async () => {
+    await wallets.create(userId, 'USD');
+    const ngn = (await wallets.create(userId, 'NGN')).wallet;
+    await wallets.setStatus(ngn.id, WalletStatus.Frozen);
+
+    await expect(wallets.setPrimary(userId, ngn.id)).rejects.toThrow(
+      WalletNotActiveException,
+    );
+  });
+
+  it('credits the matching wallet directly, and converts only when none matches', async () => {
+    const usd = (await wallets.create(userId, 'USD')).wallet;
+    const ngn = (await wallets.create(userId, 'NGN')).wallet;
+
+    await expect(
+      wallets.resolveCreditTarget(userId, 'NGN'),
+    ).resolves.toMatchObject({
+      wallet: { id: ngn.id },
+      requiresConversion: false,
+    });
+    await expect(
+      wallets.resolveCreditTarget(userId, 'GBP'),
+    ).resolves.toMatchObject({
+      wallet: { id: usd.id },
+      requiresConversion: true,
+    });
+  });
+
+  describe('converting between my wallets', () => {
+    let usdId: string;
+    let ngnId: string;
+
+    beforeEach(async () => {
+      usdId = (await wallets.create(userId, 'USD')).wallet.id;
+      ngnId = (await wallets.create(userId, 'NGN')).wallet.id;
+      await moduleRef
+        .get(AdminRateProvider)
+        .setRate({ base: 'USD', quote: 'NGN', rate: '1550', userId: null });
+      await wallets.deposit(ngnId, {
+        amount: 2_000_000n,
+        reference: 'dep-1',
+        description: 'Top-up',
+      });
+    });
+
+    const quote = (sourceAmount: bigint): Promise<FxQuote> =>
+      moduleRef.get(FxService).createQuote({
+        userId,
+        sourceCurrency: 'NGN',
+        targetCurrency: 'USD',
+        sourceAmount,
+      });
+
+    it('moves ₦15,500 out of the NGN wallet and $9.90 into the USD wallet', async () => {
+      const q = await quote(1_550_000n);
+
+      await wallets.convertBetweenWallets(userId, {
+        fromWalletId: ngnId,
+        toWalletId: usdId,
+        quoteId: q.id,
+        reference: 'conv-1',
+        description: 'Convert NGN to USD',
+      });
+
+      await expect(wallets.getForUser(userId, ngnId)).resolves.toMatchObject({
+        balances: { available: 450_000n },
+      });
+      await expect(wallets.getForUser(userId, usdId)).resolves.toMatchObject({
+        balances: { available: 990n },
+      });
+    });
+
+    it('fails without side effects when the source wallet lacks funds', async () => {
+      const q = await quote(5_000_000n);
+
+      await expect(
+        wallets.convertBetweenWallets(userId, {
+          fromWalletId: ngnId,
+          toWalletId: usdId,
+          quoteId: q.id,
+          reference: 'conv-1',
+          description: 'Convert NGN to USD',
+        }),
+      ).rejects.toThrow(InsufficientFundsException);
+
+      const unused = await dataSource.manager.findOneByOrFail(FxQuote, {
+        id: q.id,
+      });
+      expect(unused.consumedAt).toBeNull();
+    });
+
+    it('rejects a quote whose currencies do not match the wallets', async () => {
+      const q = await quote(1_550_000n);
+
+      await expect(
+        wallets.convertBetweenWallets(userId, {
+          fromWalletId: usdId,
+          toWalletId: ngnId,
+          quoteId: q.id,
+          reference: 'conv-1',
+          description: 'Wrong way round',
+        }),
+      ).rejects.toThrow(CurrencyMismatchException);
     });
   });
 });

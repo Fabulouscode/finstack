@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -42,13 +44,19 @@ export class WalletsController {
   @ApiOperation({
     summary: 'Open a wallet',
     description:
-      'Opens a wallet in the given currency. One wallet per currency per user.',
+      'Opens a wallet in the given currency (default: DEFAULT_WALLET_CURRENCY). ' +
+      'With WALLETS_PER_OWNER=single a user has one wallet; with `multiple`, one per allowed currency. ' +
+      'The first wallet is the primary one.',
   })
   @ApiCreatedResponse({ type: WalletResponseDto })
   @ApiValidationProblemResponse()
   @ApiProblemResponse(
     409,
-    'WALLET_ALREADY_EXISTS: a wallet in this currency exists',
+    'WALLET_ALREADY_EXISTS: the user already has a wallet (single) or one in this currency (multiple)',
+  )
+  @ApiProblemResponse(
+    422,
+    'WALLET_CURRENCY_NOT_ALLOWED: the operator does not allow this currency (ALLOWED_WALLET_CURRENCIES)',
   )
   async create(
     @CurrentUser() user: AuthenticatedUser,
@@ -59,18 +67,32 @@ export class WalletsController {
     );
   }
 
-  // Declared before ':walletId' so "me" is not parsed as an id.
-  @Get('me')
-  @ApiOperation({ summary: 'Get my wallet with its balances' })
+  @Get()
+  @ApiOperation({
+    summary: 'List my wallets',
+    description: 'Primary wallet first.',
+  })
+  @ApiOkResponse({ type: [WalletResponseDto] })
+  async list(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<WalletResponseDto[]> {
+    return (await this.wallets.listForUser(user.id)).map((wallet) =>
+      WalletResponseDto.from(wallet),
+    );
+  }
+
+  // Declared before ':walletId' so "primary" is not parsed as an id.
+  @Get('primary')
+  @ApiOperation({ summary: 'Get my primary wallet' })
   @ApiOkResponse({ type: WalletResponseDto })
   @ApiProblemResponse(
     404,
     'WALLET_NOT_FOUND: the user has not opened a wallet yet',
   )
-  async mine(
+  async primary(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WalletResponseDto> {
-    return WalletResponseDto.from(await this.wallets.getMine(user.id));
+    return WalletResponseDto.from(await this.wallets.getPrimary(user.id));
   }
 
   @Get(':walletId')
@@ -83,6 +105,28 @@ export class WalletsController {
   ): Promise<WalletResponseDto> {
     return WalletResponseDto.from(
       await this.wallets.getForUser(user.id, walletId),
+    );
+  }
+
+  @Post(':walletId/primary')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Make a wallet primary',
+    description:
+      'The primary wallet receives payments in currencies the user has no wallet for, after FX conversion.',
+  })
+  @ApiOkResponse({ type: WalletResponseDto })
+  @ApiProblemResponse(404, 'WALLET_NOT_FOUND: no such wallet for this user')
+  @ApiProblemResponse(
+    422,
+    'WALLET_NOT_ACTIVE: frozen or closed wallets cannot be primary',
+  )
+  async makePrimary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('walletId', ParseUUIDPipe) walletId: string,
+  ): Promise<WalletResponseDto> {
+    return WalletResponseDto.from(
+      await this.wallets.setPrimary(user.id, walletId),
     );
   }
 

@@ -59,7 +59,7 @@ describe('Wallets (e2e)', () => {
   });
 
   it('requires authentication', async () => {
-    await request(app.getHttpServer()).get('/v1/wallets/me').expect(401);
+    await request(app.getHttpServer()).get('/v1/wallets/primary').expect(401);
     await request(app.getHttpServer())
       .post('/v1/wallets')
       .send({ currency: 'USD' })
@@ -72,6 +72,7 @@ describe('Wallets (e2e)', () => {
     expect(response.body).toMatchObject({
       currency: 'USD',
       status: 'active',
+      isPrimary: true,
       balances: { available: 0, pending: 0, reserved: 0 },
     });
   });
@@ -103,12 +104,14 @@ describe('Wallets (e2e)', () => {
     },
   );
 
-  it('returns my wallet at /me, and 404 before one is opened', async () => {
-    const missing = await api(aliceToken).get('/v1/wallets/me').expect(404);
+  it('returns my primary wallet, and 404 before one is opened', async () => {
+    const missing = await api(aliceToken)
+      .get('/v1/wallets/primary')
+      .expect(404);
     expect(missing.body).toMatchObject({ code: 'WALLET_NOT_FOUND' });
 
     const opened = await openWallet(aliceToken);
-    const mine = (await api(aliceToken).get('/v1/wallets/me').expect(200))
+    const mine = (await api(aliceToken).get('/v1/wallets/primary').expect(200))
       .body as WalletResponseDto;
     expect(mine.id).toBe(opened.id);
   });
@@ -144,8 +147,9 @@ describe('Wallets (e2e)', () => {
       description: 'Payout',
     });
 
-    const fetched = (await api(aliceToken).get('/v1/wallets/me').expect(200))
-      .body as WalletResponseDto;
+    const fetched = (
+      await api(aliceToken).get('/v1/wallets/primary').expect(200)
+    ).body as WalletResponseDto;
     expect(fetched.balances.available).toBe(14_500); // $145.00
 
     const first = (
@@ -220,5 +224,70 @@ describe('Wallets: operator-restricted base currencies (e2e)', () => {
       code: 'WALLET_CURRENCY_NOT_ALLOWED',
       detail: 'Wallets can only be opened in: USD',
     });
+  });
+});
+
+describe('Wallets in multiple mode (e2e)', () => {
+  const originalEnv = process.env;
+  let app: INestApplication<App>;
+  let token: string;
+
+  const call = (
+    method: 'get' | 'post',
+    path: string,
+    body?: object,
+  ): request.Test => {
+    const req = request(app.getHttpServer())
+      [method](path)
+      .set('Authorization', `Bearer ${token}`);
+    return body ? req.send(body) : req;
+  };
+
+  beforeEach(async () => {
+    process.env = {
+      ...originalEnv,
+      WALLETS_PER_OWNER: 'multiple',
+      ALLOWED_WALLET_CURRENCIES: 'USD,NGN',
+    };
+    app = await createTestApp();
+    await resetDatabase(app.get(DataSource));
+    token = (await registerUser(app, 'ada@example.com')).tokens.accessToken;
+  });
+
+  afterEach(async () => {
+    await app.close();
+    process.env = originalEnv;
+  });
+
+  it('opens a wallet per currency, lists primary first, and switches the primary', async () => {
+    const usd = (await call('post', '/v1/wallets', {}).expect(201))
+      .body as WalletResponseDto;
+    const ngn = (
+      await call('post', '/v1/wallets', { currency: 'NGN' }).expect(201)
+    ).body as WalletResponseDto;
+    expect([usd.isPrimary, ngn.isPrimary]).toEqual([true, false]);
+
+    const duplicate = await call('post', '/v1/wallets', {
+      currency: 'NGN',
+    }).expect(409);
+    expect(duplicate.body).toMatchObject({
+      code: 'WALLET_ALREADY_EXISTS',
+      detail: 'A NGN wallet already exists',
+    });
+
+    const switched = (
+      await call('post', `/v1/wallets/${ngn.id}/primary`).expect(200)
+    ).body as WalletResponseDto;
+    expect(switched).toMatchObject({ id: ngn.id, isPrimary: true });
+
+    const list = (await call('get', '/v1/wallets').expect(200))
+      .body as WalletResponseDto[];
+    expect(list.map((w) => [w.currency, w.isPrimary])).toEqual([
+      ['NGN', true],
+      ['USD', false],
+    ]);
+    const primary = (await call('get', '/v1/wallets/primary').expect(200))
+      .body as WalletResponseDto;
+    expect(primary.id).toBe(ngn.id);
   });
 });

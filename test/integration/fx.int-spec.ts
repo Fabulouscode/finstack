@@ -37,7 +37,7 @@ describe('FX (integration)', () => {
     (await dataSource.manager.findOneByOrFail(LedgerAccount, { code })).balance;
 
   const walletBalance = async (): Promise<bigint> =>
-    (await wallets.getMine(userId)).balances.available;
+    (await wallets.getPrimary(userId)).balances.available;
 
   /** ₦15,500.00 -> $10.00 gross, $9.90 after the 1% spread. */
   const quoteNairaToDollars = (): Promise<FxQuote> =>

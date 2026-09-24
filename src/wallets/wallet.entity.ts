@@ -21,9 +21,9 @@ export enum WalletStatus {
 }
 
 /**
- * A user's single wallet, in a base currency chosen at creation (USD by
- * default). Payments in other currencies are converted by the payment
- * provider before settlement (see ADR 0008).
+ * A balance in one currency owned by a user. Depending on WALLETS_PER_OWNER a
+ * user holds one wallet or one per currency; exactly one is primary and
+ * receives foreign-currency payments after FX conversion (ADR 0010).
  *
  * The wallet holds no amounts itself: each balance is a ledger account, so
  * every change is a ledger posting.
@@ -34,8 +34,14 @@ export enum WalletStatus {
   'chk_wallets_status',
   `"status" IN (${sqlList(Object.values(WalletStatus))})`,
 )
-// One wallet per user; also serves "my wallet" lookups.
-@Index('uq_wallets_user_id', ['userId'], { unique: true })
+// At most one wallet per currency; also serves "my wallets" lookups.
+@Index('uq_wallets_user_currency', ['userId', 'currency'], { unique: true })
+// At most one primary wallet per user. In `single` mode every wallet is
+// created primary, so this index alone guarantees one wallet per user.
+@Index('uq_wallets_user_primary', ['userId'], {
+  unique: true,
+  where: '"is_primary"',
+})
 @Index('uq_wallets_available_account_id', ['availableAccountId'], {
   unique: true,
 })
@@ -59,6 +65,10 @@ export class Wallet {
 
   @Column({ type: 'varchar', length: 20, default: WalletStatus.Active })
   status: WalletStatus;
+
+  /** Receives foreign-currency payments (converted) when no wallet matches. */
+  @Column({ type: 'boolean', default: false })
+  isPrimary: boolean;
 
   /** Spendable funds. */
   @Column({ type: 'uuid' })
