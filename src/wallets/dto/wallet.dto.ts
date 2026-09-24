@@ -8,6 +8,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import type { CurrencyCode } from '../../common/money/currency';
@@ -20,9 +21,17 @@ import { WalletWithBalances } from '../wallets.service';
 // ---- Requests -----------------------------------------------------------------
 
 export class CreateWalletRequestDto {
-  @ApiProperty({ enum: SUPPORTED_CURRENCIES, example: 'NGN' })
+  @ApiPropertyOptional({
+    enum: SUPPORTED_CURRENCIES,
+    example: 'USD',
+    description:
+      'Base currency of the wallet. Defaults to DEFAULT_WALLET_CURRENCY (USD). Cannot be changed later.',
+  })
+  // Only an absent field is optional: @IsOptional() would also let an
+  // explicit null through, bypassing the default and failing at the database.
+  @ValidateIf((_object, value) => value !== undefined)
   @IsIn(SUPPORTED_CURRENCIES)
-  currency: CurrencyCode;
+  currency?: CurrencyCode;
 }
 
 export class ListWalletEntriesQueryDto {
@@ -47,8 +56,8 @@ export class ListWalletEntriesQueryDto {
 
 export class WalletBalancesDto {
   @ApiProperty({
-    description: 'Spendable balance in minor units (e.g. kobo)',
-    example: 1500000,
+    description: 'Spendable balance in minor units (e.g. cents)',
+    example: 150000,
   })
   available: number;
 
@@ -72,7 +81,7 @@ export class WalletResponseDto {
   })
   id: string;
 
-  @ApiProperty({ enum: SUPPORTED_CURRENCIES, example: 'NGN' })
+  @ApiProperty({ enum: SUPPORTED_CURRENCIES, example: 'USD' })
   currency: string;
 
   @ApiProperty({ enum: WalletStatus, example: WalletStatus.Active })
@@ -122,10 +131,10 @@ export class WalletEntryDto {
   })
   type: 'credit' | 'debit';
 
-  @ApiProperty({ description: 'Minor units, always positive', example: 500000 })
+  @ApiProperty({ description: 'Minor units, always positive', example: 5000 })
   amount: number;
 
-  @ApiProperty({ example: 'NGN' })
+  @ApiProperty({ example: 'USD' })
   currency: string;
 
   @ApiProperty({ format: 'date-time' })

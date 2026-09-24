@@ -9,10 +9,10 @@ export class WalletNotFoundException extends AppException {
 }
 
 export class WalletAlreadyExistsException extends AppException {
-  constructor(currency: string) {
+  constructor() {
     super(
       'WALLET_ALREADY_EXISTS',
-      `A ${currency} wallet already exists for this user`,
+      'This user already has a wallet',
       HttpStatus.CONFLICT,
     );
   }

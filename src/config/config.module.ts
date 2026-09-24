@@ -4,6 +4,7 @@ import { appConfig } from './app.config';
 import { authConfig } from './auth.config';
 import { databaseConfig } from './database.config';
 import { httpConfig } from './http.config';
+import { walletsConfig } from './wallets.config';
 
 /**
  * Loads `.env` (if present) and registers every validated config namespace.
@@ -16,7 +17,7 @@ import { httpConfig } from './http.config';
     NestConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [appConfig, authConfig, databaseConfig, httpConfig],
+      load: [appConfig, authConfig, databaseConfig, httpConfig, walletsConfig],
     }),
   ],
 })

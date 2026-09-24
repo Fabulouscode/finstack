@@ -21,8 +21,12 @@ export enum WalletStatus {
 }
 
 /**
- * A customer's balance in one currency. The wallet holds no amounts itself:
- * each balance is a ledger account, so every change is a ledger posting.
+ * A user's single wallet, in a base currency chosen at creation (USD by
+ * default). Payments in other currencies are converted by the payment
+ * provider before settlement (see ADR 0008).
+ *
+ * The wallet holds no amounts itself: each balance is a ledger account, so
+ * every change is a ledger posting.
  */
 @Entity({ name: 'wallets' })
 @Check('chk_wallets_currency', `"currency" ~ '^[A-Z]{3}$'`)
@@ -30,8 +34,8 @@ export enum WalletStatus {
   'chk_wallets_status',
   `"status" IN (${sqlList(Object.values(WalletStatus))})`,
 )
-// One wallet per user and currency; also serves "wallets of user" lookups.
-@Index('uq_wallets_user_currency', ['userId', 'currency'], { unique: true })
+// One wallet per user; also serves "my wallet" lookups.
+@Index('uq_wallets_user_id', ['userId'], { unique: true })
 @Index('uq_wallets_available_account_id', ['availableAccountId'], {
   unique: true,
 })

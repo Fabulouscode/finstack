@@ -96,12 +96,23 @@ describe('WalletsService (integration)', () => {
       );
     });
 
-    it('allows one wallet per currency per user', async () => {
+    it('defaults the base currency to USD', async () => {
+      const { wallet } = await wallets.create(aliceId);
+
+      expect(wallet.currency).toBe('USD');
+      await expect(wallets.getMine(aliceId)).resolves.toMatchObject({
+        wallet: { id: wallet.id },
+      });
+    });
+
+    it('allows exactly one wallet per user, whatever the currency', async () => {
       await wallets.create(aliceId, 'NGN');
-      await wallets.create(aliceId, 'USD');
       await wallets.create(bobId, 'NGN');
 
       await expect(wallets.create(aliceId, 'NGN')).rejects.toThrow(
+        WalletAlreadyExistsException,
+      );
+      await expect(wallets.create(aliceId, 'USD')).rejects.toThrow(
         WalletAlreadyExistsException,
       );
     });
@@ -124,7 +135,9 @@ describe('WalletsService (integration)', () => {
       await expect(wallets.getForUser(bobId, wallet.id)).rejects.toThrow(
         WalletNotFoundException,
       );
-      await expect(wallets.listForUser(bobId)).resolves.toEqual([]);
+      await expect(wallets.getMine(bobId)).rejects.toThrow(
+        WalletNotFoundException,
+      );
     });
   });
 
@@ -216,8 +229,9 @@ describe('WalletsService (integration)', () => {
       });
     });
 
-    it('rejects transfers between currencies', async () => {
-      const usd = (await wallets.create(bobId, 'USD')).wallet.id;
+    it('rejects transfers between wallets with different base currencies', async () => {
+      const carolId = await createUser('carol@example.com');
+      const usd = (await wallets.create(carolId, 'USD')).wallet.id;
       await wallets.deposit(aliceWallet, movement(1_000n, 'dep-1'));
 
       await expect(

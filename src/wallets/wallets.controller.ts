@@ -59,15 +59,18 @@ export class WalletsController {
     );
   }
 
-  @Get()
-  @ApiOperation({ summary: 'List my wallets' })
-  @ApiOkResponse({ type: [WalletResponseDto] })
-  async list(
+  // Declared before ':walletId' so "me" is not parsed as an id.
+  @Get('me')
+  @ApiOperation({ summary: 'Get my wallet with its balances' })
+  @ApiOkResponse({ type: WalletResponseDto })
+  @ApiProblemResponse(
+    404,
+    'WALLET_NOT_FOUND: the user has not opened a wallet yet',
+  )
+  async mine(
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<WalletResponseDto[]> {
-    return (await this.wallets.listForUser(user.id)).map((w) =>
-      WalletResponseDto.from(w),
-    );
+  ): Promise<WalletResponseDto> {
+    return WalletResponseDto.from(await this.wallets.getMine(user.id));
   }
 
   @Get(':walletId')

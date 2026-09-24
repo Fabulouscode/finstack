@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { CurrencyCode } from '../common/money/currency';
+import { walletsConfig } from '../config/wallets.config';
+import type { WalletsConfig } from '../config/wallets.config';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { LedgerAccount } from '../ledger/ledger-account.entity';
 import { CurrencyMismatchException } from '../ledger/ledger.errors';
@@ -49,12 +51,18 @@ export class WalletsService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly ledger: LedgerService,
+    @Inject(walletsConfig.KEY)
+    private readonly config: WalletsConfig,
   ) {}
 
-  /** Creates the wallet and its three ledger accounts atomically. */
+  /**
+   * Opens the user's wallet and its three ledger accounts atomically. Each
+   * user has exactly one wallet; the currency defaults to
+   * DEFAULT_WALLET_CURRENCY and cannot change afterwards.
+   */
   async create(
     userId: string,
-    currency: CurrencyCode,
+    currency: CurrencyCode = this.config.defaultCurrency,
   ): Promise<WalletWithBalances> {
     try {
       const wallet = await this.dataSource.transaction(async (manager) => {
@@ -88,31 +96,26 @@ export class WalletsService {
 
       return { wallet, balances: { available: 0n, pending: 0n, reserved: 0n } };
     } catch (error) {
-      if (isUniqueViolation(error, 'uq_wallets_user_currency')) {
-        throw new WalletAlreadyExistsException(currency);
+      if (isUniqueViolation(error, 'uq_wallets_user_id')) {
+        throw new WalletAlreadyExistsException();
       }
       throw error;
     }
   }
 
-  async listForUser(userId: string): Promise<WalletWithBalances[]> {
-    const wallets = await this.wallets.find({
-      where: { userId },
-      order: { createdAt: 'ASC' },
-    });
-    return this.withBalances(wallets);
+  async getMine(userId: string): Promise<WalletWithBalances> {
+    const wallet = await this.wallets.findOneBy({ userId });
+    if (!wallet) {
+      throw new WalletNotFoundException();
+    }
+    return this.withBalance(wallet);
   }
 
   async getForUser(
     userId: string,
     walletId: string,
   ): Promise<WalletWithBalances> {
-    const wallet = await this.findOwned(userId, walletId);
-    const [result] = await this.withBalances([wallet]);
-    if (!result) {
-      throw new WalletNotFoundException();
-    }
-    return result;
+    return this.withBalance(await this.findOwned(userId, walletId));
   }
 
   async listEntriesForUser(
@@ -164,7 +167,7 @@ export class WalletsService {
     ]);
   }
 
-  /** Wallet to wallet in the same currency. */
+  /** Wallet to wallet; both wallets must share a base currency. */
   async transfer(
     fromWalletId: string,
     toWalletId: string,
@@ -306,27 +309,24 @@ export class WalletsService {
     return wallet;
   }
 
-  /** Loads all balances in a single query. */
-  private async withBalances(wallets: Wallet[]): Promise<WalletWithBalances[]> {
-    if (wallets.length === 0) return [];
-
-    const accountIds = wallets.flatMap((w) => [
-      w.availableAccountId,
-      w.pendingAccountId,
-      w.reservedAccountId,
-    ]);
+  /** Loads the three balances in a single query. */
+  private async withBalance(wallet: Wallet): Promise<WalletWithBalances> {
     const accounts = await this.dataSource.manager.findBy(LedgerAccount, {
-      id: In(accountIds),
+      id: In([
+        wallet.availableAccountId,
+        wallet.pendingAccountId,
+        wallet.reservedAccountId,
+      ]),
     });
     const balance = new Map(accounts.map((a) => [a.id, a.balance]));
 
-    return wallets.map((wallet) => ({
+    return {
       wallet,
       balances: {
         available: balance.get(wallet.availableAccountId) ?? 0n,
         pending: balance.get(wallet.pendingAccountId) ?? 0n,
         reserved: balance.get(wallet.reservedAccountId) ?? 0n,
       },
-    }));
+    };
   }
 }
