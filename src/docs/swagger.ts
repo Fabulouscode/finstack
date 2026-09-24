@@ -63,6 +63,10 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     )
     .addTag('Auth', 'Registration, sign-in and session tokens')
     .addTag('Users', 'User accounts')
+    .addTag(
+      'Wallets',
+      'Multi-currency wallets backed by the double-entry ledger',
+    )
     .addTag('Health', 'Liveness and readiness probes')
     .build();
 

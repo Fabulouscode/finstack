@@ -35,6 +35,37 @@ export interface PostedTransaction {
   replayed: boolean;
 }
 
+export interface PostOptions {
+  /**
+   * Runs inside the posting's database transaction before the ledger is
+   * touched, e.g. to lock and validate the owning wallet. Throwing aborts
+   * the posting.
+   */
+  beforePost?: (manager: EntityManager) => Promise<void>;
+}
+
+export interface EntryPage {
+  entries: AccountEntry[];
+  /** Pass back as `before` to fetch the next (older) page; null at the end. */
+  next: EntryCursor | null;
+}
+
+export interface EntryCursor {
+  createdAt: Date;
+  id: string;
+}
+
+export interface AccountEntry {
+  id: string;
+  transactionId: string;
+  reference: string;
+  description: string;
+  direction: EntryDirection;
+  amount: bigint;
+  currency: string;
+  createdAt: Date;
+}
+
 export interface BalanceDiscrepancy {
   accountId: string;
   cachedBalance: bigint;
@@ -101,12 +132,16 @@ export class LedgerService {
    * throws LedgerReferenceConflictException. Concurrent duplicates are
    * resolved by the unique index, and the loser replays.
    */
-  async post(input: PostingInput): Promise<PostedTransaction> {
+  async post(
+    input: PostingInput,
+    options: PostOptions = {},
+  ): Promise<PostedTransaction> {
     validatePosting(input);
     try {
-      return await this.dataSource.transaction((manager) =>
-        this.postWithin(manager, input),
-      );
+      return await this.dataSource.transaction(async (manager) => {
+        await options.beforePost?.(manager);
+        return this.postWithin(manager, input);
+      });
     } catch (error) {
       if (isUniqueViolation(error, 'uq_ledger_transactions_reference')) {
         return this.replay(this.dataSource.manager, input);
@@ -200,6 +235,77 @@ export class LedgerService {
             : EntryDirection.Debit,
       })),
     });
+  }
+
+  /**
+   * Newest-first entries of an account with keyset pagination on
+   * (created_at, id), served by idx_ledger_entries_account_created_id. Unlike
+   * OFFSET, cost does not grow with page depth, and concurrent inserts never
+   * shift pages. See docs/performance/ledger-entries-pagination.md.
+   */
+  async listAccountEntries(
+    accountId: string,
+    options: { limit: number; before?: EntryCursor },
+  ): Promise<EntryPage> {
+    const query = this.dataSource.manager
+      .createQueryBuilder(LedgerEntry, 'entry')
+      .innerJoin(LedgerTransaction, 'txn', 'txn.id = entry.ledgerTransactionId')
+      .select([
+        'entry.id AS id',
+        'entry.ledgerTransactionId AS transaction_id',
+        'txn.reference AS reference',
+        'txn.description AS description',
+        'entry.direction AS direction',
+        'entry.amount AS amount',
+        'entry.currency AS currency',
+        'entry.createdAt AS created_at',
+      ])
+      .where('entry.ledgerAccountId = :accountId', { accountId })
+      .orderBy('entry.createdAt', 'DESC')
+      .addOrderBy('entry.id', 'DESC')
+      // Fetch one extra row to know whether another page exists.
+      .limit(options.limit + 1);
+
+    if (options.before) {
+      query.andWhere(
+        '(entry.createdAt, entry.id) < (:beforeCreatedAt, :beforeId)',
+        {
+          beforeCreatedAt: options.before.createdAt,
+          beforeId: options.before.id,
+        },
+      );
+    }
+
+    const rows = await query.getRawMany<{
+      id: string;
+      transaction_id: string;
+      reference: string;
+      description: string;
+      direction: EntryDirection;
+      amount: string;
+      currency: string;
+      created_at: Date;
+    }>();
+
+    const entries = rows.slice(0, options.limit).map((row) => ({
+      id: row.id,
+      transactionId: row.transaction_id,
+      reference: row.reference,
+      description: row.description,
+      direction: row.direction,
+      amount: BigInt(row.amount),
+      currency: row.currency,
+      createdAt: row.created_at,
+    }));
+    const last = entries.at(-1);
+
+    return {
+      entries,
+      next:
+        rows.length > options.limit && last
+          ? { createdAt: last.createdAt, id: last.id }
+          : null,
+    };
   }
 
   /**
