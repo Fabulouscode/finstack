@@ -181,14 +181,21 @@ export class PaymentsService {
     return this.payments.findOneBy({ provider, providerReference });
   }
 
+  /**
+   * The payment with its status. The transaction is read first and the
+   * payment again after it: settlement updates both in one commit, so a
+   * successful status always comes with its credit details (the other order
+   * could pair a new status with an old payment row).
+   */
   async view(payment: Payment): Promise<PaymentView> {
-    const [transaction, quote] = await Promise.all([
-      this.transactionsRepo.findOneByOrFail({ id: payment.transactionId }),
-      payment.fxQuoteId
-        ? this.fx.getQuote(payment.fxQuoteId)
-        : Promise.resolve(null),
-    ]);
-    return { payment, transaction, quote };
+    const transaction = await this.transactionsRepo.findOneByOrFail({
+      id: payment.transactionId,
+    });
+    const current = await this.payments.findOneByOrFail({ id: payment.id });
+    const quote = current.fxQuoteId
+      ? await this.fx.getQuote(current.fxQuoteId)
+      : null;
+    return { payment: current, transaction, quote };
   }
 
   private async customerEmailFor(

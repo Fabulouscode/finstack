@@ -159,14 +159,17 @@ export class PayoutsService {
   }
 
   async view(payoutId: string): Promise<PayoutView> {
-    const payout = await this.payouts.findOneBy({ id: payoutId });
-    if (!payout) {
+    const found = await this.payouts.findOneBy({ id: payoutId });
+    if (!found) {
       throw new PayoutNotFoundException();
     }
     const transaction = await this.dataSource.manager.findOneByOrFail(
       Transaction,
-      { id: payout.transactionId },
+      { id: found.transactionId },
     );
+    // Re-read after the status, so a settled payout never shows the
+    // provider details as they were before it settled.
+    const payout = await this.payouts.findOneByOrFail({ id: payoutId });
     const destination = await this.dataSource.manager.findOneByOrFail(
       PayoutDestination,
       { id: payout.destinationId },
