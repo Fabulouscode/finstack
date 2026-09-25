@@ -5,6 +5,7 @@ import type { PaymentsConfig } from '../config/payments.config';
 import { MockPaymentProvider } from './mock/mock-payment.provider';
 import { PaymentProvider } from './payment-provider';
 import { PaystackProvider } from './paystack/paystack.provider';
+import { StripeProvider } from './stripe/stripe.provider';
 
 export class UnknownPaymentProviderException extends AppException {
   constructor(name: string) {
@@ -26,8 +27,9 @@ export class PaymentProvidersService {
     private readonly config: PaymentsConfig,
     mock: MockPaymentProvider,
     paystack: PaystackProvider,
+    stripe: StripeProvider,
   ) {
-    const available: PaymentProvider[] = [mock, paystack];
+    const available: PaymentProvider[] = [mock, paystack, stripe];
     this.providers = new Map(
       available
         .filter((provider) =>

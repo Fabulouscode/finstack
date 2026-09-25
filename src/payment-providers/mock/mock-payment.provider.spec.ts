@@ -1,4 +1,4 @@
-import { PaymentsConfig } from '../../config/payments.config';
+import { paymentsConfigFixture } from '../../config/testing/payments-config.fixture';
 import {
   InitializePaymentResult,
   PaymentProviderError,
@@ -9,16 +9,7 @@ import {
   MockPaymentProvider,
 } from './mock-payment.provider';
 
-const config: PaymentsConfig = {
-  enabledProviders: ['mock'],
-  defaultProvider: 'mock',
-  mock: { webhookSecret: 'unit-test-webhook-secret' },
-  paystack: {
-    secretKey: '',
-    baseUrl: 'https://api.paystack.co',
-    timeoutMs: 10_000,
-  },
-};
+const config = paymentsConfigFixture();
 
 describe('MockPaymentProvider', () => {
   let provider: MockPaymentProvider;
@@ -97,10 +88,11 @@ describe('MockPaymentProvider', () => {
       const tampered = Buffer.from(
         rawBody.toString().replace('"1000"', '"999999"'),
       );
-      const otherSecret = new MockPaymentProvider({
-        ...config,
-        mock: { webhookSecret: 'a-different-webhook-secret' },
-      }).sign(rawBody);
+      const otherSecret = new MockPaymentProvider(
+        paymentsConfigFixture({
+          mock: { webhookSecret: 'a-different-webhook-secret' },
+        }),
+      ).sign(rawBody);
 
       expect(
         provider.verifyWebhookSignature(tampered, {

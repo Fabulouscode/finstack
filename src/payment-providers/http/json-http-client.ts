@@ -8,7 +8,10 @@ export interface JsonRequest {
   method: 'GET' | 'POST';
   url: string;
   headers?: Record<string, string>;
+  /** Sent as JSON. */
   body?: object;
+  /** Sent as application/x-www-form-urlencoded (e.g. Stripe). */
+  form?: Record<string, string>;
   timeoutMs: number;
 }
 
@@ -35,9 +38,16 @@ export class JsonHttpClient {
         headers: {
           Accept: 'application/json',
           ...(request.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(request.form
+            ? { 'Content-Type': 'application/x-www-form-urlencoded' }
+            : {}),
           ...request.headers,
         },
-        body: request.body ? JSON.stringify(request.body) : undefined,
+        body: request.form
+          ? new URLSearchParams(request.form).toString()
+          : request.body
+            ? JSON.stringify(request.body)
+            : undefined,
         signal: AbortSignal.timeout(request.timeoutMs),
       });
     } catch (error) {
@@ -77,9 +87,19 @@ function describe(error: unknown): string {
   return String(error);
 }
 
+/** `{ message }` (Paystack) or `{ error: { message } }` (Stripe). */
 function providerMessage(body: unknown): string {
-  if (body && typeof body === 'object' && 'message' in body) {
+  if (!body || typeof body !== 'object') return 'no message';
+  if ('message' in body) {
     return String(body.message).slice(0, 300);
+  }
+  if (
+    'error' in body &&
+    body.error &&
+    typeof body.error === 'object' &&
+    'message' in body.error
+  ) {
+    return String(body.error.message).slice(0, 300);
   }
   return 'no message';
 }

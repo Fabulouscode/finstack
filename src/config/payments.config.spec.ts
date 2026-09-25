@@ -23,6 +23,15 @@ describe('paymentsConfig', () => {
         baseUrl: 'https://api.paystack.co',
         timeoutMs: 10_000,
       },
+      stripe: {
+        secretKey: '',
+        webhookSecret: '',
+        baseUrl: 'https://api.stripe.com',
+        timeoutMs: 10_000,
+        webhookToleranceSeconds: 300,
+        successUrl: '',
+        cancelUrl: '',
+      },
     });
   });
 
@@ -76,6 +85,46 @@ describe('paymentsConfig', () => {
       process.env.PAYSTACK_SECRET_KEY = 'pk_test_public';
 
       expect(() => paymentsConfig()).toThrow(ConfigValidationError);
+    });
+  });
+
+  describe('Stripe', () => {
+    const stripeEnv = {
+      PAYMENT_PROVIDERS: 'stripe',
+      STRIPE_SECRET_KEY: 'sk_test_abc123',
+      STRIPE_WEBHOOK_SECRET: 'whsec_abc123',
+      STRIPE_SUCCESS_URL: 'https://app.example.com/paid',
+      STRIPE_CANCEL_URL: 'https://app.example.com/cancelled',
+    };
+
+    it('accepts a complete test configuration', () => {
+      Object.assign(process.env, stripeEnv);
+
+      expect(paymentsConfig()).toMatchObject({
+        defaultProvider: 'stripe',
+        stripe: { secretKey: 'sk_test_abc123', webhookSecret: 'whsec_abc123' },
+      });
+    });
+
+    it.each([
+      'STRIPE_SECRET_KEY',
+      'STRIPE_WEBHOOK_SECRET',
+      'STRIPE_SUCCESS_URL',
+    ])('requires %s', (name) => {
+      Object.assign(process.env, stripeEnv);
+      delete process.env[name];
+
+      expect(() => paymentsConfig()).toThrow(ConfigValidationError);
+    });
+
+    it('refuses a live key outside production', () => {
+      Object.assign(process.env, stripeEnv, {
+        STRIPE_SECRET_KEY: 'sk_live_abc123',
+      });
+
+      expect(() => paymentsConfig()).toThrow(
+        /live key may only be used in production/,
+      );
     });
   });
 

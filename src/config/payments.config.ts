@@ -15,7 +15,7 @@ import {
 } from 'class-validator';
 import { ConfigValidationError, validateConfig } from './validate-config';
 
-export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack'] as const;
+export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack', 'stripe'] as const;
 export type PaymentProviderName = (typeof KNOWN_PAYMENT_PROVIDERS)[number];
 
 const toList = ({ value }: { value: unknown }): unknown =>
@@ -63,6 +63,57 @@ class PaymentsEnvironmentVariables {
   @Min(1_000)
   @Max(60_000)
   PAYSTACK_TIMEOUT_MS: number = 10_000;
+
+  /** Stripe secret key: `sk_test_...` or `sk_live_...` (restricted `rk_` keys too). */
+  @IsOptional()
+  @Matches(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/, {
+    message: 'STRIPE_SECRET_KEY must look like sk_test_... or sk_live_...',
+  })
+  STRIPE_SECRET_KEY?: string;
+
+  /** Signing secret of the webhook endpoint (`whsec_...`). */
+  @IsOptional()
+  @Matches(/^whsec_[A-Za-z0-9+/=]+$/, {
+    message: 'STRIPE_WEBHOOK_SECRET must look like whsec_...',
+  })
+  STRIPE_WEBHOOK_SECRET?: string;
+
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  STRIPE_BASE_URL: string = 'https://api.stripe.com';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1_000)
+  @Max(60_000)
+  STRIPE_TIMEOUT_MS: number = 10_000;
+
+  /** Webhooks signed longer ago than this are rejected (replay protection). */
+  @Type(() => Number)
+  @IsInt()
+  @Min(30)
+  @Max(3_600)
+  STRIPE_WEBHOOK_TOLERANCE_SECONDS: number = 300;
+
+  /** Where Stripe Checkout returns the customer when no callbackUrl is given. */
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  STRIPE_SUCCESS_URL?: string;
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  STRIPE_CANCEL_URL?: string;
 }
 
 export const paymentsConfig = registerAs('payments', () => {
@@ -110,6 +161,31 @@ export const paymentsConfig = registerAs('payments', () => {
       );
     }
   }
+  if (enabled.includes('stripe')) {
+    const key = env.STRIPE_SECRET_KEY;
+    const production = process.env.NODE_ENV === 'production';
+    if (!key) {
+      violations.push('STRIPE_SECRET_KEY is required when Stripe is enabled');
+    } else if (production && key.includes('_test_')) {
+      violations.push(
+        'STRIPE_SECRET_KEY: a test key must not be used in production',
+      );
+    } else if (!production && key.includes('_live_')) {
+      violations.push(
+        'STRIPE_SECRET_KEY: a live key may only be used in production',
+      );
+    }
+    if (!env.STRIPE_WEBHOOK_SECRET) {
+      violations.push(
+        'STRIPE_WEBHOOK_SECRET is required when Stripe is enabled',
+      );
+    }
+    if (!env.STRIPE_SUCCESS_URL || !env.STRIPE_CANCEL_URL) {
+      violations.push(
+        'STRIPE_SUCCESS_URL and STRIPE_CANCEL_URL are required when Stripe is enabled',
+      );
+    }
+  }
   if (violations.length > 0) {
     throw new ConfigValidationError('payments', violations);
   }
@@ -122,6 +198,15 @@ export const paymentsConfig = registerAs('payments', () => {
       secretKey: env.PAYSTACK_SECRET_KEY ?? '',
       baseUrl: env.PAYSTACK_BASE_URL.replace(/\/+$/, ''),
       timeoutMs: env.PAYSTACK_TIMEOUT_MS,
+    },
+    stripe: {
+      secretKey: env.STRIPE_SECRET_KEY ?? '',
+      webhookSecret: env.STRIPE_WEBHOOK_SECRET ?? '',
+      baseUrl: env.STRIPE_BASE_URL.replace(/\/+$/, ''),
+      timeoutMs: env.STRIPE_TIMEOUT_MS,
+      webhookToleranceSeconds: env.STRIPE_WEBHOOK_TOLERANCE_SECONDS,
+      successUrl: env.STRIPE_SUCCESS_URL ?? '',
+      cancelUrl: env.STRIPE_CANCEL_URL ?? '',
     },
   };
 });

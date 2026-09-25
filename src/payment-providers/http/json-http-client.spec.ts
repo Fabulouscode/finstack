@@ -69,4 +69,26 @@ describe('JsonHttpClient', () => {
     ).toBe(true);
     expect((await failure(respond(200, 'not json'))).retryable).toBe(false);
   });
+
+  it('sends form bodies and reads Stripe-style error messages', async () => {
+    let sent: RequestInit | undefined;
+    const client = new JsonHttpClient(((_url: string, init: RequestInit) => {
+      sent = init;
+      return Promise.resolve(
+        new Response('{"error":{"message":"No such checkout.session"}}', {
+          status: 404,
+        }),
+      );
+    }) as unknown as FetchFn);
+
+    const error = await client
+      .request({ ...request, method: 'POST', form: { a: '1', 'b[c]': 'x y' } })
+      .catch((e: unknown) => e);
+
+    expect(sent?.body).toBe('a=1&b%5Bc%5D=x+y');
+    expect(error).toMatchObject({
+      retryable: false,
+      message: 'HTTP 404: No such checkout.session',
+    });
+  });
 });

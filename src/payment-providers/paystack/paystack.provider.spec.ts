@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { PaymentsConfig } from '../../config/payments.config';
+import { paymentsConfigFixture } from '../../config/testing/payments-config.fixture';
 import { FetchFn, JsonHttpClient } from '../http/json-http-client';
 import { PaymentProviderError } from '../payment-provider';
 import {
@@ -8,16 +8,15 @@ import {
 } from './paystack.provider';
 
 const SECRET = 'sk_test_unitsecret123';
-const config: PaymentsConfig = {
+const config = paymentsConfigFixture({
   enabledProviders: ['paystack'],
   defaultProvider: 'paystack',
-  mock: { webhookSecret: '' },
   paystack: {
     secretKey: SECRET,
     baseUrl: 'https://api.paystack.test',
     timeoutMs: 5_000,
   },
-};
+});
 
 interface Captured {
   url: string;
