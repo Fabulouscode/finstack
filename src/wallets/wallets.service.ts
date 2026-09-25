@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { AuditAction } from '../audit/audit-actions';
+import { AuditService } from '../audit/audit.service';
 import { CurrencyCode } from '../common/money/currency';
 import { walletsConfig, WalletsPerOwner } from '../config/wallets.config';
 import type { WalletsConfig } from '../config/wallets.config';
@@ -78,6 +80,7 @@ export class WalletsService {
     @Inject(walletsConfig.KEY)
     private readonly config: WalletsConfig,
     private readonly fx: FxService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -191,6 +194,16 @@ export class WalletsService {
         { isPrimary: false },
       );
       await manager.update(Wallet, { id: walletId }, { isPrimary: true });
+      await this.audit.record(manager, {
+        action: AuditAction.WalletPrimaryChanged,
+        organizationId: target.organizationId,
+        targetType: 'wallet',
+        targetId: walletId,
+        metadata: {
+          previousPrimaryWalletId:
+            wallets.find((wallet) => wallet.isPrimary)?.id ?? null,
+        },
+      });
     });
 
     return this.getOwned(owner, walletId);
@@ -641,7 +654,7 @@ export class WalletsService {
       const pending = await account('pending');
       const reserved = await account('reserved');
 
-      return manager.save(
+      const created = await manager.save(
         manager.create(Wallet, {
           ...ownerColumns(owner),
           currency,
@@ -652,6 +665,14 @@ export class WalletsService {
           reservedAccountId: reserved.id,
         }),
       );
+      await this.audit.record(manager, {
+        action: AuditAction.WalletCreated,
+        organizationId: created.organizationId,
+        targetType: 'wallet',
+        targetId: created.id,
+        metadata: { currency, isPrimary },
+      });
+      return created;
     });
 
     return { wallet, balances: { available: 0n, pending: 0n, reserved: 0n } };

@@ -9,6 +9,7 @@ import {
   InvalidApiKeyException,
 } from '../../api-keys/api-keys.errors';
 import { ApiKeysService } from '../../api-keys/api-keys.service';
+import { RequestContext } from '../../common/request-context/request-context';
 import { AuthenticationRequiredException } from '../auth.errors';
 import { AuthenticatedRequest } from '../authenticated-user';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -52,6 +53,11 @@ export class JwtAuthGuard implements CanActivate {
         throw new InvalidApiKeyException();
       }
       request.apiKey = principal;
+      RequestContext.setActor({
+        type: 'api_key',
+        id: principal.id,
+        organizationId: principal.organizationId,
+      });
       return true;
     }
 
@@ -68,6 +74,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = user;
+    RequestContext.setActor({ type: 'user', id: user.id });
     return true;
   }
 }

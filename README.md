@@ -227,6 +227,22 @@ curl -X POST localhost:3000/v1/organizations/<id>/payments \
   -d '{"amount": 250000, "currency": "NGN", "customerEmail": "customer@example.com"}'
 ```
 
+### Audit logs
+
+Sensitive and administrative actions are recorded in an **append-only** `audit_logs` table (a database trigger rejects edits and deletes). Each entry is written in the same transaction as the change and records:
+- who did it (user, API key or system)
+- what they did, to what, and with which details
+- the request id and IP
+
+Audited areas include members and roles, API keys, wallets, refunds, FX rates, webhook replays and refresh-token reuse.
+
+| Endpoint | Access |
+| --- | --- |
+| `GET /v1/organizations/:id/audit-logs` | `audit_logs:read` (owner, admin) |
+| `GET /v1/admin/audit-logs` | platform admin; filter by `organizationId`, `actorId`, `action`, `targetType`, `targetId` |
+
+See [ADR 0017](./docs/adr/0017-audit-logs.md).
+
 ## Wallets and ledger
 
 Every amount is an **integer in minor units** (cents, kobo) plus an ISO 4217 currency: `15000` USD is $150.00. Supported currencies are listed in `src/common/money/currency.ts`.
@@ -432,7 +448,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
+- [ ] **Phase 3 — Operations** (done: audit logs): payouts, settlement holds, reconciliation, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

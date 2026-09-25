@@ -1,3 +1,5 @@
+import { AuditApiModule } from './audit/audit-api.module';
+import { AuditModule } from './audit/audit.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { HttpModule } from './common/http/http.module';
@@ -21,6 +23,8 @@ import { WebhooksModule } from './webhooks/webhooks.module';
   imports: [
     ConfigModule,
     DatabaseModule,
+    AuditModule,
+    AuditApiModule,
     HttpModule,
     HealthModule,
     IdempotencyModule,

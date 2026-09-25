@@ -1,3 +1,5 @@
+import { AuditAction } from '../../audit/audit-actions';
+import { AuditService } from '../../audit/audit.service';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -33,6 +35,7 @@ export class RefreshTokenService {
     private readonly dataSource: DataSource,
     @Inject(authConfig.KEY)
     private readonly config: AuthConfig,
+    private readonly audit: AuditService,
   ) {}
 
   /** Starts a new token family (a new login session). */
@@ -66,6 +69,13 @@ export class RefreshTokenService {
         }
         if (current.revokedAt !== null) {
           await this.revokeFamilyWith(manager, current.familyId);
+          await this.audit.record(manager, {
+            action: AuditAction.RefreshTokenReuseDetected,
+            actor: { type: 'system' },
+            targetType: 'user',
+            targetId: current.userId,
+            metadata: { familyId: current.familyId, sessionRevoked: true },
+          });
           return {
             kind: 'reused',
             userId: current.userId,

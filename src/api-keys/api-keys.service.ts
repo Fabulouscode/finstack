@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'node:crypto';
 import { IsNull, LessThan, Repository } from 'typeorm';
+import { AuditAction } from '../audit/audit-actions';
+import { AuditService } from '../audit/audit.service';
 import { appConfig } from '../config/app.config';
 import type { AppConfig } from '../config/app.config';
 import {
@@ -31,6 +33,7 @@ export class ApiKeysService {
     @InjectRepository(ApiKey) private readonly keys: Repository<ApiKey>,
     private readonly organizations: OrganizationsService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -57,19 +60,34 @@ export class ApiKeysService {
     const id = randomBytes(4).toString('hex');
     const secret = `fsk_${environment}_${id}_${randomBytes(32).toString('base64url')}`;
 
-    const apiKey = await this.keys.save(
-      this.keys.create({
+    const apiKey = await this.keys.manager.transaction(async (manager) => {
+      const saved = await manager.save(
+        manager.create(ApiKey, {
+          organizationId: input.organizationId,
+          name: input.name,
+          prefix: `fsk_${environment}_${id}`,
+          keyHash: hashApiKey(secret),
+          scopes,
+          createdByUserId: input.creatorId,
+          lastUsedAt: null,
+          expiresAt: input.expiresAt ?? null,
+          revokedAt: null,
+        }),
+      );
+      await this.audit.record(manager, {
+        action: AuditAction.ApiKeyCreated,
         organizationId: input.organizationId,
-        name: input.name,
-        prefix: `fsk_${environment}_${id}`,
-        keyHash: hashApiKey(secret),
-        scopes,
-        createdByUserId: input.creatorId,
-        lastUsedAt: null,
-        expiresAt: input.expiresAt ?? null,
-        revokedAt: null,
-      }),
-    );
+        targetType: 'api_key',
+        targetId: saved.id,
+        metadata: {
+          name: saved.name,
+          prefix: saved.prefix,
+          scopes,
+          expiresAt: saved.expiresAt,
+        },
+      });
+      return saved;
+    });
     return { apiKey, secret };
   }
 
@@ -81,10 +99,22 @@ export class ApiKeysService {
   }
 
   async revoke(organizationId: string, apiKeyId: string): Promise<void> {
-    const result = await this.keys.update(
-      { id: apiKeyId, organizationId, revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
+    const result = await this.keys.manager.transaction(async (manager) => {
+      const updated = await manager.update(
+        ApiKey,
+        { id: apiKeyId, organizationId, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      if (updated.affected) {
+        await this.audit.record(manager, {
+          action: AuditAction.ApiKeyRevoked,
+          organizationId,
+          targetType: 'api_key',
+          targetId: apiKeyId,
+        });
+      }
+      return updated;
+    });
     if (!result.affected) {
       const exists = await this.keys.existsBy({ id: apiKeyId, organizationId });
       if (!exists) throw new ApiKeyNotFoundException();

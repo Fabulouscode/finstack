@@ -11,6 +11,7 @@ export enum OrgPermission {
   CreatePayments = 'payments:create',
   ReadTransactions = 'transactions:read',
   ManageApiKeys = 'api_keys:manage',
+  ReadAuditLogs = 'audit_logs:read',
 }
 
 export enum OrgRole {
@@ -36,6 +37,7 @@ export const ROLE_PERMISSIONS: Readonly<
     OrgPermission.ManageWallets,
     OrgPermission.CreatePayments,
     OrgPermission.ManageApiKeys,
+    OrgPermission.ReadAuditLogs,
   ],
   [OrgRole.Member]: [...READ, OrgPermission.CreatePayments],
   [OrgRole.Viewer]: READ,

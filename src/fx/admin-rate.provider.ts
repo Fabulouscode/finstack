@@ -1,3 +1,5 @@
+import { AuditAction } from '../audit/audit-actions';
+import { AuditService } from '../audit/audit.service';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,6 +16,7 @@ export class AdminRateProvider implements RateProvider {
   constructor(
     @InjectRepository(FxRate)
     private readonly rates: Repository<FxRate>,
+    private readonly audit: AuditService,
   ) {}
 
   async getRate(
@@ -48,15 +51,27 @@ export class AdminRateProvider implements RateProvider {
     rate: string;
     userId: string | null;
   }): Promise<FxRate> {
-    return this.rates.save(
-      this.rates.create({
-        baseCurrency: input.base,
-        quoteCurrency: input.quote,
-        rate: formatRate(parseRate(input.rate)),
-        source: ADMIN_RATE_SOURCE,
-        createdByUserId: input.userId,
-      }),
-    );
+    return this.rates.manager.transaction(async (manager) => {
+      const rate = await manager.save(
+        manager.create(FxRate, {
+          baseCurrency: input.base,
+          quoteCurrency: input.quote,
+          rate: formatRate(parseRate(input.rate)),
+          source: ADMIN_RATE_SOURCE,
+          createdByUserId: input.userId,
+        }),
+      );
+      await this.audit.record(manager, {
+        action: AuditAction.FxRateSet,
+        targetType: 'fx_rate',
+        targetId: rate.id,
+        metadata: {
+          pair: `${rate.baseCurrency}/${rate.quoteCurrency}`,
+          rate: rate.rate,
+        },
+      });
+      return rate;
+    });
   }
 
   /** Newest rate of every pair (one row per unordered pair). */

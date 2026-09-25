@@ -24,5 +24,5 @@ export function requestIdMiddleware(
   const requestId = resolveRequestId(req.header(REQUEST_ID_HEADER));
 
   res.setHeader(REQUEST_ID_HEADER, requestId);
-  RequestContext.run({ requestId }, next);
+  RequestContext.run({ requestId, ipAddress: req.ip }, next);
 }

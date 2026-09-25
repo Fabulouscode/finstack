@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { AuditAction } from '../audit/audit-actions';
+import { AuditService } from '../audit/audit.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
@@ -34,6 +36,7 @@ export class OrganizationsService {
     private readonly memberships: Repository<Membership>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly users: UsersService,
+    private readonly audit: AuditService,
   ) {}
 
   /** The creator becomes the owner, atomically. */
@@ -49,6 +52,13 @@ export class OrganizationsService {
           role: OrgRole.Owner,
         }),
       );
+      await this.audit.record(manager, {
+        action: AuditAction.OrganizationCreated,
+        organizationId: created.id,
+        targetType: 'organization',
+        targetId: created.id,
+        metadata: { name },
+      });
       return created;
     });
     return { organization, role: OrgRole.Owner };
@@ -85,7 +95,17 @@ export class OrganizationsService {
   }
 
   async rename(organizationId: string, name: string): Promise<Organization> {
-    await this.organizations.update({ id: organizationId }, { name });
+    const before = await this.get(organizationId);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(Organization, { id: organizationId }, { name });
+      await this.audit.record(manager, {
+        action: AuditAction.OrganizationRenamed,
+        organizationId,
+        targetType: 'organization',
+        targetId: organizationId,
+        metadata: { from: before.name, to: name },
+      });
+    });
     return this.get(organizationId);
   }
 
@@ -110,9 +130,23 @@ export class OrganizationsService {
       throw new UserNotFoundForEmailException();
     }
     try {
-      const membership = await this.memberships.save(
-        this.memberships.create({ organizationId, userId: user.id, role }),
-      );
+      const membership = await this.dataSource.transaction(async (manager) => {
+        const saved = await manager.save(
+          manager.create(Membership, {
+            organizationId,
+            userId: user.id,
+            role,
+          }),
+        );
+        await this.audit.record(manager, {
+          action: AuditAction.MemberAdded,
+          organizationId,
+          targetType: 'user',
+          targetId: user.id,
+          metadata: { role },
+        });
+        return saved;
+      });
       return { membership, user };
     } catch (error) {
       if (isUniqueViolation(error, 'uq_organization_members_org_user')) {
@@ -131,7 +165,16 @@ export class OrganizationsService {
     if (target.membership.role === OrgRole.Owner) {
       throw new OwnerChangeNotAllowedException();
     }
-    await this.memberships.update({ id: target.membership.id }, { role });
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(Membership, { id: target.membership.id }, { role });
+      await this.audit.record(manager, {
+        action: AuditAction.MemberRoleChanged,
+        organizationId,
+        targetType: 'user',
+        targetId: userId,
+        metadata: { from: target.membership.role, to: role },
+      });
+    });
     return { ...target, membership: { ...target.membership, role } };
   }
 
@@ -140,7 +183,16 @@ export class OrganizationsService {
     if (target.membership.role === OrgRole.Owner) {
       throw new OwnerChangeNotAllowedException();
     }
-    await this.memberships.delete({ id: target.membership.id });
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(Membership, { id: target.membership.id });
+      await this.audit.record(manager, {
+        action: AuditAction.MemberRemoved,
+        organizationId,
+        targetType: 'user',
+        targetId: userId,
+        metadata: { role: target.membership.role },
+      });
+    });
   }
 
   /**
@@ -175,6 +227,17 @@ export class OrganizationsService {
         { id: next.id },
         { role: OrgRole.Owner },
       );
+      await this.audit.record(manager, {
+        action: AuditAction.OwnershipTransferred,
+        organizationId,
+        targetType: 'user',
+        targetId: newOwnerUserId,
+        metadata: {
+          previousOwnerUserId:
+            members.find((member) => member.role === OrgRole.Owner)?.userId ??
+            null,
+        },
+      });
     });
   }
 

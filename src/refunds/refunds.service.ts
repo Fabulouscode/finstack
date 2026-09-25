@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { AuditAction } from '../audit/audit-actions';
+import { AuditService } from '../audit/audit.service';
 import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { isUniqueViolation } from '../database/postgres-errors';
@@ -64,6 +66,7 @@ export class RefundsService {
     private readonly wallets: WalletsService,
     private readonly ledger: LedgerService,
     private readonly outbox: OutboxService,
+    private readonly audit: AuditService,
   ) {}
 
   async request(
@@ -118,6 +121,12 @@ export class RefundsService {
   async retry(refundId: string): Promise<RefundView> {
     const { refund, transaction } = await this.view(refundId);
     if (transaction.status === TransactionStatus.Processing) {
+      await this.audit.record(undefined, {
+        action: AuditAction.RefundRetried,
+        organizationId: transaction.organizationId,
+        targetType: 'refund',
+        targetId: refund.id,
+      });
       await this.submit(refund);
     }
     return this.view(refundId);
@@ -218,7 +227,7 @@ export class RefundsService {
       metadata: { transactionId: transaction.id },
     });
 
-    return manager.save(
+    const refund = await manager.save(
       manager.create(Refund, {
         reference,
         paymentId: payment.id,
@@ -237,6 +246,19 @@ export class RefundsService {
         idempotencyKey,
       }),
     );
+    await this.audit.record(manager, {
+      action: AuditAction.RefundRequested,
+      organizationId: payment.organizationId,
+      targetType: 'refund',
+      targetId: refund.id,
+      metadata: {
+        paymentId: payment.id,
+        amount: amount.toString(),
+        currency: payment.currency,
+        reason: input.reason,
+      },
+    });
+    return refund;
   }
 
   /** Refunds that are processing or successful (not failed) count against the payment. */

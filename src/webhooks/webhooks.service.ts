@@ -2,6 +2,8 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { IncomingHttpHeaders } from 'node:http';
 import { DataSource, EntityManager, Repository } from 'typeorm';
+import { AuditAction } from '../audit/audit-actions';
+import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/http/app.exception';
 import { WEBHOOK_RECEIVED } from '../outbox/outbox-publisher';
 import { OutboxRelay } from '../outbox/outbox-relay.service';
@@ -71,6 +73,7 @@ export class WebhooksService {
     private readonly payments: PaymentsService,
     private readonly settlement: PaymentSettlementService,
     private readonly refunds: RefundsService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -244,6 +247,16 @@ export class WebhooksService {
         status: WebhookEventStatus.Received,
       });
       await this.scheduleProcessing(manager, event.id);
+      await this.audit.record(manager, {
+        action: AuditAction.WebhookReplayed,
+        targetType: 'webhook_event',
+        targetId: event.id,
+        metadata: {
+          provider: event.provider,
+          eventId: event.eventId,
+          previousStatus: event.status,
+        },
+      });
     });
     this.relay.nudge();
     return this.events.findOneByOrFail({ id: webhookEventId });
