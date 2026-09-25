@@ -18,6 +18,7 @@ describe('paymentsConfig', () => {
       enabledProviders: ['mock'],
       defaultProvider: 'mock',
       currencyRoutes: {},
+      settlementDelaySeconds: 0,
       mock: { webhookSecret: secret },
       paystack: {
         secretKey: '',
@@ -34,6 +35,14 @@ describe('paymentsConfig', () => {
         cancelUrl: '',
       },
     });
+  });
+
+  it('reads and bounds the settlement delay', () => {
+    process.env.PAYMENT_SETTLEMENT_DELAY_SECONDS = '172800';
+    expect(paymentsConfig().settlementDelaySeconds).toBe(172_800);
+
+    process.env.PAYMENT_SETTLEMENT_DELAY_SECONDS = '-1';
+    expect(() => paymentsConfig()).toThrow(ConfigValidationError);
   });
 
   it('refuses the mock provider in production', () => {

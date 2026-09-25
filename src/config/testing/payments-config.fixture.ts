@@ -8,6 +8,7 @@ export function paymentsConfigFixture(
     enabledProviders: ['mock'],
     defaultProvider: 'mock',
     currencyRoutes: {},
+    settlementDelaySeconds: 0,
     mock: { webhookSecret: 'unit-test-webhook-secret' },
     paystack: {
       secretKey: '',

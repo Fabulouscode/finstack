@@ -126,6 +126,17 @@ class PaymentsEnvironmentVariables {
     message: 'PAYMENT_CURRENCY_ROUTES must look like USD:stripe,NGN:paystack',
   })
   PAYMENT_CURRENCY_ROUTES?: string;
+
+  /**
+   * How long money from a successful payment stays in the wallet's pending
+   * balance before it can be spent or paid out (a settlement hold, e.g.
+   * against chargebacks). 0 credits it as available immediately.
+   */
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(90 * 24 * 3600)
+  PAYMENT_SETTLEMENT_DELAY_SECONDS: number = 0;
 }
 
 export const paymentsConfig = registerAs('payments', () => {
@@ -226,6 +237,7 @@ export const paymentsConfig = registerAs('payments', () => {
     enabledProviders: enabled,
     defaultProvider: defaultProvider as PaymentProviderName,
     currencyRoutes,
+    settlementDelaySeconds: env.PAYMENT_SETTLEMENT_DELAY_SECONDS,
     mock: { webhookSecret: env.MOCK_PROVIDER_WEBHOOK_SECRET ?? '' },
     paystack: {
       secretKey: env.PAYSTACK_SECRET_KEY ?? '',

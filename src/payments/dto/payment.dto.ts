@@ -154,6 +154,21 @@ export class PaymentResponseDto {
   @ApiProperty({ format: 'date-time', nullable: true })
   completedAt: Date | null;
 
+  @ApiProperty({
+    format: 'date-time',
+    nullable: true,
+    description:
+      'When the credited money is (or becomes) spendable. Later than `completedAt` under a settlement hold (PAYMENT_SETTLEMENT_DELAY_SECONDS); null until credited.',
+  })
+  fundsAvailableAt: Date | null;
+
+  @ApiProperty({
+    description:
+      "Still in the wallet's pending balance from this payment (wallet currency, minor units)",
+    example: 0,
+  })
+  heldAmount: number;
+
   static from({
     payment,
     transaction,
@@ -184,6 +199,8 @@ export class PaymentResponseDto {
       failureCode: transaction.failureCode,
       createdAt: payment.createdAt,
       completedAt: transaction.completedAt,
+      fundsAvailableAt: payment.fundsAvailableAt,
+      heldAmount: toApiAmount(payment.pendingAmount),
     };
   }
 }

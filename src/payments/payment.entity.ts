@@ -29,6 +29,11 @@ import { Wallet } from '../wallets/wallet.entity';
 })
 @Index('idx_payments_user_created', ['userId', 'createdAt'])
 @Index('idx_payments_org_created', ['organizationId', 'createdAt'])
+@Check('chk_payments_pending_amount', `"pending_amount" >= 0`)
+// The settlement-release sweep: held payments by due time.
+@Index('idx_payments_pending_release', ['fundsAvailableAt'], {
+  where: '"pending_amount" > 0',
+})
 @Check('chk_payments_owner', `num_nonnulls("user_id", "organization_id") = 1`)
 export class Payment {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'pk_payments' })
@@ -104,6 +109,17 @@ export class Payment {
     foreignKeyConstraintName: 'fk_payments_fx_quote',
   })
   fxQuote?: FxQuote;
+
+  /**
+   * Settlement hold: how much of the credit (wallet currency) is still in
+   * the wallet's pending balance. Refunds while held take from it first.
+   */
+  @Column({ type: 'bigint', transformer: bigintTransformer, default: 0 })
+  pendingAmount: bigint;
+
+  /** When the credited money is (or becomes) available; null until credited. */
+  @Column({ type: 'timestamptz', precision: 3, nullable: true })
+  fundsAvailableAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz', precision: 3 })
   createdAt: Date;

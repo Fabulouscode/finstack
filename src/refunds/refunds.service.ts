@@ -220,12 +220,24 @@ export class RefundsService {
       },
     });
 
-    await this.wallets.reserveWithin(manager, wallet.id, {
+    // While the payment is in its settlement hold, the refund is funded from
+    // that payment's pending credit first, then from the available balance.
+    const fromPending =
+      payment.pendingAmount < reversal.walletDebit
+        ? payment.pendingAmount
+        : reversal.walletDebit;
+    await this.wallets.reserveSplitWithin(manager, wallet.id, {
       amount: reversal.walletDebit,
+      fromPending,
       reference: `refund-hold:${reference}`,
       description: `Hold for refund ${reference}`,
       metadata: { transactionId: transaction.id },
     });
+    if (fromPending > 0n) {
+      await manager.update(Payment, payment.id, {
+        pendingAmount: payment.pendingAmount - fromPending,
+      });
+    }
 
     const refund = await manager.save(
       manager.create(Refund, {
@@ -236,6 +248,7 @@ export class RefundsService {
         currency: payment.currency,
         walletId: wallet.id,
         walletDebitAmount: reversal.walletDebit,
+        pendingHoldAmount: fromPending,
         walletCurrency: wallet.currency,
         revenueReversal: reversal.revenueReversal,
         grossReversal: reversal.grossReversal,
@@ -505,8 +518,10 @@ export class RefundsService {
       if (transaction.status !== TransactionStatus.Processing) {
         return;
       }
-      await this.wallets.releaseWithin(manager, refund.walletId, {
+      const toPending = await this.returnToPending(manager, refund);
+      await this.wallets.releaseSplitWithin(manager, refund.walletId, {
         amount: refund.walletDebitAmount,
+        fromPending: toPending,
         reference: `refund-release:${refund.reference}`,
         description: `Release hold for failed refund ${refund.reference}`,
       });
@@ -533,6 +548,37 @@ export class RefundsService {
         },
       });
     });
+  }
+
+  /**
+   * How much of a failed refund's hold goes back to pending: the part taken
+   * from the payment's settlement hold, if that hold hasn't ended yet (then
+   * the payment's pending credit grows back). Otherwise it all becomes
+   * available.
+   */
+  private async returnToPending(
+    manager: EntityManager,
+    refund: Refund,
+  ): Promise<bigint> {
+    if (refund.pendingHoldAmount === 0n) {
+      return 0n;
+    }
+    const payment = await manager
+      .createQueryBuilder(Payment, 'payment')
+      .setLock('pessimistic_write')
+      .where('payment.id = :id', { id: refund.paymentId })
+      .getOneOrFail();
+    const stillHeld =
+      payment.pendingAmount > 0n ||
+      (payment.fundsAvailableAt !== null &&
+        payment.fundsAvailableAt.getTime() > Date.now());
+    if (!stillHeld) {
+      return 0n;
+    }
+    await manager.update(Payment, payment.id, {
+      pendingAmount: payment.pendingAmount + refund.pendingHoldAmount,
+    });
+    return refund.pendingHoldAmount;
   }
 
   private async markPaymentReversedIfFullyRefunded(

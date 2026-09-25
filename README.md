@@ -74,6 +74,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
 | `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
 | `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `USD:stripe,NGN:paystack` |
+| `PAYMENT_SETTLEMENT_DELAY_SECONDS` | `0` | Settlement hold: payment funds stay pending this long before they can be spent or paid out |
 | `MOCK_PROVIDER_WEBHOOK_SECRET` | — (required with `mock`) | HMAC secret the mock provider signs webhooks with |
 | `PAYSTACK_SECRET_KEY` | — (required with `paystack`) | `sk_test_…` outside production, `sk_live_…` only in production. Also verifies webhooks. |
 | `PAYSTACK_BASE_URL` | `https://api.paystack.co` | Override for testing |
@@ -345,6 +346,10 @@ A provider is one class implementing `PaymentProvider` (`src/payment-providers/p
 
 The Paystack and Stripe adapters are tested against local fakes of each API (`test/utils/fake-paystack.ts`, `test/utils/fake-stripe.ts`). The fakes use the same endpoints, encodings, idempotency behaviour and webhook signature schemes. Stripe webhooks older than `STRIPE_WEBHOOK_TOLERANCE_SECONDS` are rejected even with a valid signature, which prevents replays.
 
+### Settlement holds
+
+Set `PAYMENT_SETTLEMENT_DELAY_SECONDS` and successful payments land in the wallet's **pending** balance. After the delay, a worker moves them to available (checked every minute). Until then they can't be transferred or paid out. Payments show `fundsAvailableAt` and `heldAmount`. Admins can end a hold early with `POST /v1/admin/payments/:id/release` (audited). A refund of a held payment is taken from its pending credit. See [ADR 0019](./docs/adr/0019-settlement-holds.md).
+
 ## Refunds
 
 | Endpoint (admin) | Description |
@@ -468,7 +473,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs, payouts): settlement holds, reconciliation, admin, notifications, observability
+- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds): reconciliation, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

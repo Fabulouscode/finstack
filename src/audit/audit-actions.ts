@@ -13,6 +13,7 @@ export const AuditAction = {
   PayoutDestinationAdded: 'payout_destination.added',
   PayoutDestinationRemoved: 'payout_destination.removed',
   PayoutRequested: 'payout.requested',
+  PaymentReleasedEarly: 'payment.released_early',
   RefundRequested: 'refund.requested',
   RefundRetried: 'refund.retried',
   FxRateSet: 'fx.rate_set',

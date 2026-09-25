@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { toCurrencyCode } from '../common/money/currency';
+import { paymentsConfig } from '../config/payments.config';
+import type { PaymentsConfig } from '../config/payments.config';
 import { FxQuote } from '../fx/fx-quote.entity';
 import { FxService } from '../fx/fx.service';
 import { OutboxService } from '../outbox/outbox.service';
@@ -43,6 +45,7 @@ export class PaymentSettlementService {
     private readonly wallets: WalletsService,
     private readonly fx: FxService,
     private readonly outbox: OutboxService,
+    @Inject(paymentsConfig.KEY) private readonly config: PaymentsConfig,
   ) {}
 
   /**
@@ -130,6 +133,11 @@ export class PaymentSettlementService {
 
       const reference = `payment:${transaction.reference}`;
       const description = `Payment ${transaction.reference}`;
+      // With a settlement hold, the money lands in pending and becomes
+      // available later (SettlementReleaseService).
+      const holdMs = this.config.settlementDelaySeconds * 1000;
+      const into = holdMs > 0 ? 'pending' : 'available';
+      const fundsAvailableAt = new Date(Date.now() + holdMs);
       let ledgerTransactionId: string;
       let credited = { amount: payment.amount, currency: payment.currency };
 
@@ -143,6 +151,7 @@ export class PaymentSettlementService {
             reference,
             description,
           },
+          into,
         );
         ledgerTransactionId = conversion.targetLeg.id;
         credited = {
@@ -159,6 +168,7 @@ export class PaymentSettlementService {
             description,
             metadata: { transactionId: transaction.id, paymentId: payment.id },
           },
+          into,
         );
         ledgerTransactionId = posted.transaction.id;
       }
@@ -173,6 +183,10 @@ export class PaymentSettlementService {
           completedAt: new Date(),
         },
       );
+      await manager.update(Payment, payment.id, {
+        pendingAmount: holdMs > 0 ? credited.amount : 0n,
+        fundsAvailableAt,
+      });
       // Committed atomically with the credit: the event exists iff the money moved.
       await this.outbox.add(manager, {
         type: 'payment.successful',
@@ -193,6 +207,7 @@ export class PaymentSettlementService {
             amount: credited.amount.toString(),
             currency: credited.currency,
           },
+          fundsAvailableAt: fundsAvailableAt.toISOString(),
         },
       });
       return 'credited';

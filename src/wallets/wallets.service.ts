@@ -41,6 +41,15 @@ const PRIMARY_CONSTRAINTS = [
   'uq_wallets_org_primary',
 ];
 
+/** Which balance a deposit lands in. */
+export type DepositBalance = 'available' | 'pending';
+
+function balanceAccount(wallet: Wallet, balance: DepositBalance): string {
+  return balance === 'pending'
+    ? wallet.pendingAccountId
+    : wallet.availableAccountId;
+}
+
 export interface WalletBalances {
   available: bigint;
   pending: bigint;
@@ -342,6 +351,7 @@ export class WalletsService {
     manager: EntityManager,
     walletId: string,
     movement: MoneyMovement,
+    into: DepositBalance = 'available',
   ): Promise<PostedTransaction> {
     const wallet = await this.getWallet(walletId);
     const clearing = await this.clearingAccount(wallet.currency);
@@ -355,7 +365,7 @@ export class WalletsService {
       entries: [
         { accountId: clearing.id, direction: Debit, amount: movement.amount },
         {
-          accountId: wallet.availableAccountId,
+          accountId: balanceAccount(wallet, into),
           direction: Credit,
           amount: movement.amount,
         },
@@ -368,6 +378,7 @@ export class WalletsService {
     manager: EntityManager,
     walletId: string,
     input: { quoteId: string; reference: string; description: string },
+    into: DepositBalance = 'available',
   ): Promise<ConversionResult> {
     const { wallet, clearing } = await this.prepareConversionDeposit(
       walletId,
@@ -379,7 +390,7 @@ export class WalletsService {
       reference: input.reference,
       description: input.description,
       sourceDebitAccountId: clearing.id,
-      targetCreditAccountId: wallet.availableAccountId,
+      targetCreditAccountId: balanceAccount(wallet, into),
       beforeConvert: (m) => this.lockActiveWallets(m, [walletId]),
     });
   }
@@ -545,6 +556,108 @@ export class WalletsService {
         },
       ],
     });
+  }
+
+  /**
+   * Settlement: pending -> available, e.g. when a payment's hold period
+   * ends. Works on frozen wallets too (the money stays in the wallet).
+   */
+  async makeAvailableWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    const wallet = await this.getWallet(walletId);
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: [
+        {
+          accountId: wallet.pendingAccountId,
+          direction: Debit,
+          amount: movement.amount,
+        },
+        {
+          accountId: wallet.availableAccountId,
+          direction: Credit,
+          amount: movement.amount,
+        },
+      ],
+    });
+  }
+
+  /**
+   * A hold funded from pending and available balances: `fromPending` of the
+   * amount comes out of pending (e.g. refunding a payment still in its
+   * settlement hold), the rest out of available.
+   */
+  async reserveSplitWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement & { fromPending: bigint },
+  ): Promise<PostedTransaction> {
+    await this.lockActiveWallets(manager, [walletId]);
+    const wallet = await this.getWallet(walletId);
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: this.splitEntries(wallet, movement, Debit),
+    });
+  }
+
+  /** Undoes reserveSplitWithin(): each part returns where it came from. */
+  async releaseSplitWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement & { fromPending: bigint },
+  ): Promise<PostedTransaction> {
+    const wallet = await this.getWallet(walletId);
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: this.splitEntries(wallet, movement, Credit),
+    });
+  }
+
+  /** Entries between pending/available and reserved; `side` applies to the sources. */
+  private splitEntries(
+    wallet: Wallet,
+    movement: MoneyMovement & { fromPending: bigint },
+    side: EntryDirection,
+  ): { accountId: string; direction: EntryDirection; amount: bigint }[] {
+    const opposite = side === Debit ? Credit : Debit;
+    const fromAvailable = movement.amount - movement.fromPending;
+    return [
+      ...(movement.fromPending > 0n
+        ? [
+            {
+              accountId: wallet.pendingAccountId,
+              direction: side,
+              amount: movement.fromPending,
+            },
+          ]
+        : []),
+      ...(fromAvailable > 0n
+        ? [
+            {
+              accountId: wallet.availableAccountId,
+              direction: side,
+              amount: fromAvailable,
+            },
+          ]
+        : []),
+      {
+        accountId: wallet.reservedAccountId,
+        direction: opposite,
+        amount: movement.amount,
+      },
+    ];
   }
 
   /** Releases a hold: reserved -> available. */

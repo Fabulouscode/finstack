@@ -8,7 +8,9 @@ import { Transaction } from '../transactions/transaction.entity';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
+import { AdminPaymentsController } from './admin-payments.controller';
 import { Payment } from './payment.entity';
+import { SettlementReleaseService } from './settlement-release.service';
 import { PaymentSettlementService } from './payment-settlement.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
@@ -28,8 +30,20 @@ import { OrganizationsModule } from '../organizations/organizations.module';
     FxModule,
     UsersModule,
   ],
-  controllers: [PaymentsController, OrganizationPaymentsController],
-  providers: [PaymentsService, PaymentSettlementService],
-  exports: [PaymentsService, PaymentSettlementService],
+  controllers: [
+    AdminPaymentsController,
+    PaymentsController,
+    OrganizationPaymentsController,
+  ],
+  providers: [
+    PaymentsService,
+    PaymentSettlementService,
+    SettlementReleaseService,
+  ],
+  exports: [
+    PaymentsService,
+    PaymentSettlementService,
+    SettlementReleaseService,
+  ],
 })
 export class PaymentsModule {}

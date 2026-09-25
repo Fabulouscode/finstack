@@ -99,6 +99,13 @@ export class Refund {
   @Column({ type: 'char', length: 3 })
   walletCurrency: string;
 
+  /**
+   * Part of `walletDebitAmount` held from the pending balance (the payment
+   * was still in its settlement hold). Returned there if the refund fails.
+   */
+  @Column({ type: 'bigint', transformer: bigintTransformer, default: 0 })
+  pendingHoldAmount: bigint;
+
   /** For converted payments: FX revenue given back (wallet currency). */
   @Column({ type: 'bigint', transformer: bigintTransformer, default: 0 })
   revenueReversal: bigint;
