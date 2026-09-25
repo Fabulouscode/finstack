@@ -16,6 +16,9 @@ import {
   PayoutResult,
   ProviderPaymentStatus,
   ProviderPayoutStatus,
+  ProviderRecordStatus,
+  ReconciliationCapability,
+  TimeRange,
   ProviderWebhookEvent,
   RefundPaymentInput,
   RefundPaymentResult,
@@ -30,6 +33,45 @@ interface PaystackEnvelope<T> {
   status: boolean;
   message: string;
   data: T;
+  meta?: { page?: number; pageCount?: number };
+}
+
+interface PaystackListedTransaction {
+  reference: string;
+  status: string;
+  amount: number;
+  currency: string;
+  created_at?: string;
+  createdAt?: string;
+}
+
+interface PaystackListedTransfer {
+  reference: string;
+  transfer_code: string;
+  status: string;
+  amount: number;
+  currency: string;
+  createdAt?: string;
+  created_at?: string;
+}
+
+const LIST_PAGE_SIZE = 100;
+/** A day with more than this many pages is refused rather than cut short. */
+const LIST_MAX_PAGES = 200;
+
+/** Transaction statuses as reconciliation sees them (refunds stay collected). */
+function mapListedStatus(status: string): ProviderRecordStatus {
+  switch (status) {
+    case 'success':
+      return 'successful';
+    case 'reversed':
+      return 'refunded';
+    case 'failed':
+    case 'abandoned':
+      return 'failed';
+    default:
+      return 'pending';
+  }
 }
 
 interface PaystackTransaction {
@@ -108,6 +150,31 @@ export class PaystackProvider implements PaymentProvider {
     createRecipient: (input) => this.createRecipient(input),
     initiate: (input) => this.initiateTransfer(input),
     find: (reference) => this.findTransfer(reference),
+  };
+
+  readonly reconciliation: ReconciliationCapability = {
+    listPayments: async (range) =>
+      (
+        await this.listAll<PaystackListedTransaction>('/transaction', range)
+      ).map((t) => ({
+        providerReference: t.reference,
+        reference: t.reference,
+        status: mapListedStatus(t.status),
+        amount: BigInt(t.amount),
+        currency: t.currency,
+        createdAt: new Date(t.created_at ?? t.createdAt ?? 0),
+      })),
+    listPayouts: async (range) =>
+      (await this.listAll<PaystackListedTransfer>('/transfer', range)).map(
+        (t) => ({
+          reference: t.reference,
+          providerReference: t.transfer_code,
+          status: mapTransferStatus(t.status),
+          amount: BigInt(t.amount),
+          currency: t.currency,
+          createdAt: new Date(t.createdAt ?? t.created_at ?? 0),
+        }),
+      ),
   };
 
   constructor(
@@ -335,6 +402,40 @@ export class PaystackProvider implements PaymentProvider {
         ? { failureReason: transfer.reason }
         : {}),
     };
+  }
+
+  /** Every item of a paginated list endpoint created within `range`. */
+  private async listAll<T extends { createdAt?: string; created_at?: string }>(
+    path: string,
+    range: TimeRange,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    for (let page = 1; ; page++) {
+      if (page > LIST_MAX_PAGES) {
+        throw new PaymentProviderError(
+          `Paystack ${path}: more than ${LIST_MAX_PAGES} pages; use a shorter period`,
+          false,
+        );
+      }
+      const query = new URLSearchParams({
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+        perPage: String(LIST_PAGE_SIZE),
+        page: String(page),
+      });
+      const { body } = await this.call<T[]>(
+        'GET',
+        `${path}?${query.toString()}`,
+      );
+      items.push(...body.data);
+      const pageCount = body.meta?.pageCount ?? 1;
+      if (page >= pageCount || body.data.length === 0) break;
+    }
+    // Paystack's `to` is inclusive; keep the range half-open.
+    return items.filter((item) => {
+      const created = new Date(item.created_at ?? item.createdAt ?? 0);
+      return created >= range.from && created < range.to;
+    });
   }
 
   private async call<T>(

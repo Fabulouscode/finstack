@@ -17,6 +17,8 @@ import {
   ProviderPaymentStatus,
   ProviderPayoutStatus,
   ProviderWebhookEvent,
+  ReconciliationCapability,
+  TimeRange,
   RefundPaymentInput,
   RefundPaymentResult,
   VerifyPaymentInput,
@@ -25,12 +27,17 @@ import {
 
 export const MOCK_SIGNATURE_HEADER = 'x-mock-signature';
 
+function inRange(date: Date, range: TimeRange): boolean {
+  return date >= range.from && date < range.to;
+}
+
 interface MockPayment {
   reference: string;
   providerReference: string;
   amount: bigint;
   currency: string;
   status: ProviderPaymentStatus;
+  createdAt: Date;
 }
 
 export interface MockWebhookBody {
@@ -69,7 +76,9 @@ interface MockPayout {
   reference: string;
   providerReference: string;
   amount: bigint;
+  currency: string;
   status: ProviderPayoutStatus;
+  createdAt: Date;
 }
 
 interface MockRefund {
@@ -125,6 +134,7 @@ export class MockPaymentProvider implements PaymentProvider {
         amount: input.amount,
         currency: input.currency,
         status: 'pending',
+        createdAt: new Date(),
       } satisfies MockPayment);
     this.payments.set(payment.providerReference, payment);
 
@@ -290,6 +300,68 @@ export class MockPaymentProvider implements PaymentProvider {
     return { rawBody, signature: this.sign(rawBody) };
   }
 
+  readonly reconciliation: ReconciliationCapability = {
+    listPayments: (range) =>
+      Promise.resolve(
+        [...this.payments.values()]
+          .filter((p) => inRange(p.createdAt, range))
+          .map((p) => ({
+            providerReference: p.providerReference,
+            reference: p.reference,
+            status: p.status,
+            amount: p.amount,
+            currency: p.currency,
+            createdAt: p.createdAt,
+          })),
+      ),
+    listPayouts: (range) =>
+      Promise.resolve(
+        [...this.payoutsByReference.values()]
+          .filter((p) => inRange(p.createdAt, range))
+          .map((p) => ({
+            reference: p.reference,
+            providerReference: p.providerReference,
+            status: p.status,
+            amount: p.amount,
+            currency: p.currency,
+            createdAt: p.createdAt,
+          })),
+      ),
+  };
+
+  /**
+   * A payment that exists only at the provider (e.g. a lost initialisation
+   * response, or a charge made outside FinStack), for reconciliation tests.
+   */
+  recordExternalPayment(input: {
+    amount: bigint;
+    currency: string;
+    status?: ProviderPaymentStatus;
+  }): string {
+    const providerReference = `mock_${randomBytes(8).toString('hex')}`;
+    this.payments.set(providerReference, {
+      reference: `ext_${randomBytes(6).toString('hex')}`,
+      providerReference,
+      amount: input.amount,
+      currency: input.currency,
+      status: input.status ?? 'successful',
+      createdAt: new Date(),
+    });
+    return providerReference;
+  }
+
+  /** Changes what the provider reports for a payment, without a webhook. */
+  setPaymentStatus(
+    providerReference: string,
+    status: ProviderPaymentStatus,
+  ): void {
+    const payment = this.payments.get(providerReference);
+    if (!payment) {
+      throw new PaymentProviderError('Unknown mock payment', false);
+    }
+    payment.status = status;
+  }
+
   /** Makes the next payouts succeed, stay pending, fail or time out. */
   setPayoutBehaviour(behaviour: MockPayoutBehaviour): void {
     this.payoutBehaviour = behaviour;
@@ -361,6 +433,8 @@ export class MockPaymentProvider implements PaymentProvider {
       reference: input.reference,
       providerReference: `TRF_mock_${randomBytes(6).toString('hex')}`,
       amount: input.amount,
+      currency: input.currency,
+      createdAt: new Date(),
       status: this.payoutBehaviour === 'pending' ? 'pending' : 'successful',
     };
     this.payoutsByReference.set(input.reference, payout);

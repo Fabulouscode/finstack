@@ -385,3 +385,116 @@ describe('PaystackProvider payouts', () => {
     });
   });
 });
+
+describe('PaystackProvider reconciliation', () => {
+  const range = {
+    from: new Date('2026-09-24T00:00:00Z'),
+    to: new Date('2026-09-25T00:00:00Z'),
+  };
+
+  function providerPaging(pages: object[]): {
+    provider: PaystackProvider;
+    calls: Captured[];
+  } {
+    const calls: Captured[] = [];
+    const fetchFn = ((url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      const body = pages[calls.length - 1] ?? pages.at(-1);
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status: 200 }),
+      );
+    }) as unknown as FetchFn;
+    return {
+      provider: new PaystackProvider(config, new JsonHttpClient(fetchFn)),
+      calls,
+    };
+  }
+
+  const tx = (
+    reference: string,
+    status: string,
+    createdAt: string,
+  ): object => ({
+    reference,
+    status,
+    amount: 5000,
+    currency: 'NGN',
+    created_at: createdAt,
+  });
+
+  it('pages through transactions and keeps the range half-open', async () => {
+    const { provider, calls } = providerPaging([
+      {
+        status: true,
+        message: 'ok',
+        data: [
+          tx('trx_1', 'success', '2026-09-24T01:00:00Z'),
+          tx('trx_2', 'reversed', '2026-09-24T02:00:00Z'),
+        ],
+        meta: { page: 1, pageCount: 2 },
+      },
+      {
+        status: true,
+        message: 'ok',
+        data: [
+          tx('trx_3', 'abandoned', '2026-09-24T03:00:00Z'),
+          // Paystack's `to` is inclusive: this one belongs to the next day.
+          tx('trx_4', 'success', '2026-09-25T00:00:00Z'),
+        ],
+        meta: { page: 2, pageCount: 2 },
+      },
+    ]);
+
+    const records = await provider.reconciliation.listPayments(range);
+
+    expect(records.map((r) => [r.reference, r.status])).toEqual([
+      ['trx_1', 'successful'],
+      ['trx_2', 'refunded'],
+      ['trx_3', 'failed'],
+    ]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.url).toContain('page=2');
+  });
+
+  it('refuses a period too large to list completely', async () => {
+    const { provider } = providerPaging([
+      {
+        status: true,
+        message: 'ok',
+        data: [tx('trx_1', 'success', '2026-09-24T01:00:00Z')],
+        meta: { page: 1, pageCount: 1_000 },
+      },
+    ]);
+    await expect(provider.reconciliation.listPayments(range)).rejects.toThrow(
+      /more than 200 pages/,
+    );
+  });
+
+  it('lists transfers by our reference', async () => {
+    const { provider } = providerPaging([
+      {
+        status: true,
+        message: 'ok',
+        data: [
+          {
+            reference: 'pyt_1',
+            transfer_code: 'TRF_1',
+            status: 'success',
+            amount: 5000,
+            currency: 'NGN',
+            createdAt: '2026-09-24T05:00:00Z',
+          },
+        ],
+        meta: { page: 1, pageCount: 1 },
+      },
+    ]);
+    await expect(provider.reconciliation.listPayouts?.(range)).resolves.toEqual([
+      expect.objectContaining({
+        reference: 'pyt_1',
+        providerReference: 'TRF_1',
+        status: 'successful',
+        amount: 5000n,
+      }),
+    ]);
+  });
+});

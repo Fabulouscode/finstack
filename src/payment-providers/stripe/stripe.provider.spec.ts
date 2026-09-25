@@ -287,3 +287,57 @@ describe('StripeProvider', () => {
     });
   });
 });
+
+describe('StripeProvider reconciliation', () => {
+  const range = {
+    from: new Date('2026-09-24T00:00:00Z'),
+    to: new Date('2026-09-25T00:00:00Z'),
+  };
+  const at = (iso: string): number => new Date(iso).getTime() / 1000;
+
+  it('lists every session of the period across pages', async () => {
+    const { provider, calls } = providerReturning(
+      {
+        data: [
+          session({ id: 'cs_1', created: at('2026-09-24T10:00:00Z') }),
+          session({
+            id: 'cs_2',
+            created: at('2026-09-24T11:00:00Z'),
+            status: 'expired',
+            payment_status: 'unpaid',
+          }),
+        ],
+        has_more: true,
+      },
+      {
+        data: [
+          session({
+            id: 'cs_3',
+            created: at('2026-09-24T12:00:00Z'),
+            status: 'open',
+            payment_status: 'unpaid',
+            client_reference_id: null,
+          }),
+        ],
+        has_more: false,
+      },
+    );
+
+    const records = await provider.reconciliation.listPayments(range);
+
+    expect(records.map((r) => [r.providerReference, r.status])).toEqual([
+      ['cs_1', 'successful'],
+      ['cs_2', 'failed'],
+      ['cs_3', 'pending'],
+    ]);
+    expect(records[0]).toMatchObject({
+      reference: 'trx_1',
+      amount: 1000n,
+      currency: 'USD',
+    });
+    expect(calls[0]?.url).toContain(
+      `created%5Bgte%5D=${at('2026-09-24T00:00:00Z')}`,
+    );
+    expect(calls[1]?.url).toContain('starting_after=cs_2');
+  });
+});

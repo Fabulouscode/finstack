@@ -126,6 +126,48 @@ export interface ProviderWebhookEvent {
   reference?: string;
 }
 
+// ---- Reconciliation (the provider's own records) ------------------------------
+
+/** `refunded`: collected, then (fully) refunded. */
+export type ProviderRecordStatus =
+  'pending' | 'successful' | 'failed' | 'refunded';
+
+export interface ProviderPaymentRecord {
+  /** The provider's reference, as stored on our payment. */
+  providerReference: string;
+  /** Our transaction reference, when the provider echoes it. */
+  reference?: string;
+  status: ProviderRecordStatus;
+  /** Minor units. */
+  amount: bigint;
+  currency: string;
+  createdAt: Date;
+}
+
+export interface ProviderPayoutRecord {
+  /** Our payout reference. */
+  reference: string;
+  providerReference: string;
+  status: ProviderPayoutStatus;
+  amount: bigint;
+  currency: string;
+  createdAt: Date;
+}
+
+export interface TimeRange {
+  from: Date;
+  /** Exclusive. */
+  to: Date;
+}
+
+/** Optional provider capability: listing its records to compare with ours. */
+export interface ReconciliationCapability {
+  /** Every payment the provider created in the range. */
+  listPayments(range: TimeRange): Promise<ProviderPaymentRecord[]>;
+  /** Every payout (transfer) in the range, when the provider sends payouts. */
+  listPayouts?(range: TimeRange): Promise<ProviderPayoutRecord[]>;
+}
+
 /**
  * Contract every payment provider adapter implements. The payment system
  * only talks to this interface, so adding a provider means adding an
@@ -160,6 +202,9 @@ export interface PaymentProvider {
 
   /** Present when the provider can send payouts. */
   readonly payouts?: PayoutCapability;
+
+  /** Present when the provider can list its records for reconciliation. */
+  readonly reconciliation?: ReconciliationCapability;
 }
 
 /** Raised by adapters. `retryable` distinguishes outages from rejections. */

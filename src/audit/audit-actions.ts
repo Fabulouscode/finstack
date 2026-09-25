@@ -17,6 +17,7 @@ export const AuditAction = {
   RefundRequested: 'refund.requested',
   RefundRetried: 'refund.retried',
   FxRateSet: 'fx.rate_set',
+  ReconciliationItemResolved: 'reconciliation_item.resolved',
   WebhookReplayed: 'webhook.replayed',
   RefreshTokenReuseDetected: 'auth.refresh_token_reuse_detected',
 } as const;

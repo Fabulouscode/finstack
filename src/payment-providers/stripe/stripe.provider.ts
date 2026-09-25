@@ -11,16 +11,22 @@ import {
   PaymentProviderError,
   ProviderPaymentStatus,
   ProviderWebhookEvent,
+  ReconciliationCapability,
   RefundPaymentInput,
   RefundPaymentResult,
+  TimeRange,
   VerifyPaymentInput,
   VerifyPaymentResult,
 } from '../payment-provider';
 
 export const STRIPE_SIGNATURE_HEADER = 'stripe-signature';
 
+/** A period with more than this many pages is refused rather than cut short. */
+const LIST_MAX_PAGES = 200;
+
 interface CheckoutSession {
   id: string;
+  created?: number;
   url: string | null;
   client_reference_id: string | null;
   status: 'open' | 'complete' | 'expired';
@@ -79,6 +85,24 @@ export class StripeProvider implements PaymentProvider {
     'KES',
     'ZAR',
   ] as const;
+
+  /** Checkout Sessions created in the range (refunds don't change them). */
+  readonly reconciliation: ReconciliationCapability = {
+    listPayments: async (range) =>
+      (await this.listSessions(range)).map((session) => ({
+        providerReference: session.id,
+        reference: session.client_reference_id ?? undefined,
+        status:
+          session.payment_status === 'paid'
+            ? 'successful'
+            : session.status === 'expired'
+              ? 'failed'
+              : 'pending',
+        amount: BigInt(session.amount_total ?? 0),
+        currency: (session.currency ?? '').toUpperCase(),
+        createdAt: new Date((session.created ?? 0) * 1000),
+      })),
+  };
 
   constructor(
     @Inject(paymentsConfig.KEY) private readonly config: PaymentsConfig,
@@ -257,6 +281,36 @@ export class StripeProvider implements PaymentProvider {
         ? (object.client_reference_id ?? undefined)
         : undefined,
     };
+  }
+
+  private async listSessions(range: TimeRange): Promise<CheckoutSession[]> {
+    const sessions: CheckoutSession[] = [];
+    let startingAfter: string | undefined;
+    for (let page = 1; ; page++) {
+      if (page > LIST_MAX_PAGES) {
+        throw new PaymentProviderError(
+          `Stripe: more than ${LIST_MAX_PAGES} pages of sessions; use a shorter period`,
+          false,
+        );
+      }
+      const query = new URLSearchParams({
+        'created[gte]': String(Math.floor(range.from.getTime() / 1000)),
+        'created[lt]': String(Math.ceil(range.to.getTime() / 1000)),
+        limit: '100',
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      const list = await this.call<{
+        data: CheckoutSession[];
+        has_more: boolean;
+      }>('GET', `/v1/checkout/sessions?${query.toString()}`);
+      sessions.push(...list.data);
+      startingAfter = list.data.at(-1)?.id;
+      if (!list.has_more || !startingAfter) break;
+    }
+    return sessions.filter((session) => {
+      const created = (session.created ?? 0) * 1000;
+      return created >= range.from.getTime() && created < range.to.getTime();
+    });
   }
 
   private getSession(sessionId: string): Promise<CheckoutSession> {

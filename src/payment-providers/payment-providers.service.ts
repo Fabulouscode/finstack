@@ -164,6 +164,10 @@ export class PaymentProvidersService {
     return provider;
   }
 
+  enabledNames(): string[] {
+    return [...this.providers.keys()];
+  }
+
   has(name: string): boolean {
     return this.providers.has(name);
   }

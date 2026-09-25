@@ -385,6 +385,22 @@ curl -X POST localhost:3000/v1/payouts -H "Authorization: Bearer $TOKEN" \
 
 A payout is **never sent twice**. The provider is always asked about our reference before anything is sent again, and payouts stuck in `processing` are re-checked every few minutes. Payouts work with the mock and **Paystack Transfers** (NGN, GHS, ZAR). Stripe payouts would need Stripe Connect and aren't included. See [ADR 0018](./docs/adr/0018-payouts.md).
 
+## Reconciliation
+
+Every day at 02:00 UTC, FinStack compares the previous day's payments and payouts with each provider's own records (mock, Paystack and Stripe), and checks that the ledger balances. Admins can also start a run for any period of up to 31 days.
+
+- **Late webhooks are fixed automatically** through the normal settlement paths. Examples are a payment the provider says succeeded but that is still pending here, or a payout the provider completed silently.
+- **Every other difference becomes an item to resolve:** money collected but not credited, credited but not collected, amount mismatches, unknown provider records, and ledger problems. Reconciliation never moves money on its own.
+
+| Endpoint | Description |
+| --- | --- |
+| `POST /v1/admin/reconciliation/runs` | Start a run: `{ "provider": "paystack", "from": "…", "to": "…" }` (omit `provider` for the ledger check) |
+| `GET /v1/admin/reconciliation/runs[/:id]` | Runs with their summary (checked, issues, auto-resolved) |
+| `GET /v1/admin/reconciliation/items?status=open` | The work queue |
+| `POST /v1/admin/reconciliation/items/:id/resolve` | Record what was done (audited) |
+
+See [ADR 0020](./docs/adr/0020-reconciliation.md).
+
 ## Events and background jobs
 
 Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
@@ -473,7 +489,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds): reconciliation, admin, notifications, observability
+- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation): admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions
