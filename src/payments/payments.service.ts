@@ -18,6 +18,7 @@ import { UsersService } from '../users/users.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { Payment } from './payment.entity';
 import {
+  CurrencyNotSupportedByProviderException,
   PaymentNotFoundException,
   PaymentProviderUnavailableException,
 } from './payments.errors';
@@ -81,7 +82,14 @@ export class PaymentsService {
     }
 
     const providerName = input.provider ?? this.providers.defaultName;
-    this.providers.get(providerName); // fail fast on an unknown provider
+    // Fail fast, before creating any records.
+    const provider = this.providers.get(providerName);
+    if (!provider.supportedCurrencies.includes(input.currency)) {
+      throw new CurrencyNotSupportedByProviderException(
+        providerName,
+        input.currency,
+      );
+    }
 
     const target = await this.wallets.resolveCreditTarget(
       userId,

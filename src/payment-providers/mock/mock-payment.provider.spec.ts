@@ -13,6 +13,11 @@ const config: PaymentsConfig = {
   enabledProviders: ['mock'],
   defaultProvider: 'mock',
   mock: { webhookSecret: 'unit-test-webhook-secret' },
+  paystack: {
+    secretKey: '',
+    baseUrl: 'https://api.paystack.co',
+    timeoutMs: 10_000,
+  },
 };
 
 describe('MockPaymentProvider', () => {

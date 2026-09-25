@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { IncomingHttpHeaders } from 'node:http';
+import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import { paymentsConfig } from '../../config/payments.config';
 import type { PaymentsConfig } from '../../config/payments.config';
 import {
@@ -46,6 +47,7 @@ export interface MockWebhookBody {
 @Injectable()
 export class MockPaymentProvider implements PaymentProvider {
   readonly name = 'mock';
+  readonly supportedCurrencies = SUPPORTED_CURRENCIES;
   private readonly payments = new Map<string, MockPayment>();
 
   constructor(

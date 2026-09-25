@@ -1,16 +1,21 @@
 import { registerAs } from '@nestjs/config';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
+  IsUrl,
+  Matches,
+  Max,
+  Min,
   MinLength,
 } from 'class-validator';
 import { ConfigValidationError, validateConfig } from './validate-config';
 
-export const KNOWN_PAYMENT_PROVIDERS = ['mock'] as const;
+export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack'] as const;
 export type PaymentProviderName = (typeof KNOWN_PAYMENT_PROVIDERS)[number];
 
 const toList = ({ value }: { value: unknown }): unknown =>
@@ -38,6 +43,26 @@ class PaymentsEnvironmentVariables {
   @IsString()
   @MinLength(16)
   MOCK_PROVIDER_WEBHOOK_SECRET?: string;
+
+  /** Paystack secret key: `sk_test_...` or `sk_live_...`. Also signs webhooks. */
+  @IsOptional()
+  @Matches(/^sk_(test|live)_[A-Za-z0-9]+$/, {
+    message: 'PAYSTACK_SECRET_KEY must look like sk_test_... or sk_live_...',
+  })
+  PAYSTACK_SECRET_KEY?: string;
+
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  PAYSTACK_BASE_URL: string = 'https://api.paystack.co';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1_000)
+  @Max(60_000)
+  PAYSTACK_TIMEOUT_MS: number = 10_000;
 }
 
 export const paymentsConfig = registerAs('payments', () => {
@@ -67,6 +92,24 @@ export const paymentsConfig = registerAs('payments', () => {
       );
     }
   }
+  if (enabled.includes('paystack')) {
+    const key = env.PAYSTACK_SECRET_KEY;
+    const production = process.env.NODE_ENV === 'production';
+    if (!key) {
+      violations.push(
+        'PAYSTACK_SECRET_KEY is required when Paystack is enabled',
+      );
+    } else if (production && key.startsWith('sk_test_')) {
+      violations.push(
+        'PAYSTACK_SECRET_KEY: a test key must not be used in production',
+      );
+    } else if (!production && key.startsWith('sk_live_')) {
+      // Guard against real charges from a laptop or CI.
+      violations.push(
+        'PAYSTACK_SECRET_KEY: a live key may only be used in production',
+      );
+    }
+  }
   if (violations.length > 0) {
     throw new ConfigValidationError('payments', violations);
   }
@@ -75,6 +118,11 @@ export const paymentsConfig = registerAs('payments', () => {
     enabledProviders: enabled,
     defaultProvider: defaultProvider as PaymentProviderName,
     mock: { webhookSecret: env.MOCK_PROVIDER_WEBHOOK_SECRET ?? '' },
+    paystack: {
+      secretKey: env.PAYSTACK_SECRET_KEY ?? '',
+      baseUrl: env.PAYSTACK_BASE_URL.replace(/\/+$/, ''),
+      timeoutMs: env.PAYSTACK_TIMEOUT_MS,
+    },
   };
 });
 

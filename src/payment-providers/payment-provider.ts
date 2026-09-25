@@ -67,6 +67,9 @@ export interface ProviderWebhookEvent {
 export interface PaymentProvider {
   readonly name: string;
 
+  /** ISO currencies the provider can charge in. */
+  readonly supportedCurrencies: readonly string[];
+
   initializePayment(
     input: InitializePaymentInput,
   ): Promise<InitializePaymentResult>;
