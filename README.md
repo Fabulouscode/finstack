@@ -286,9 +286,24 @@ A provider is one class implementing `PaymentProvider` (`src/payment-providers/p
 
 The Paystack and Stripe adapters are tested against local fakes of each API (`test/utils/fake-paystack.ts`, `test/utils/fake-stripe.ts`). The fakes use the same endpoints, encodings, idempotency behaviour and webhook signature schemes. Stripe webhooks older than `STRIPE_WEBHOOK_TOLERANCE_SECONDS` are rejected even with a valid signature, which prevents replays.
 
+## Refunds
+
+| Endpoint (admin) | Description |
+| --- | --- |
+| `POST /v1/admin/payments/:id/refunds` | Full or partial refund: `{ "amount": 775000, "reason": "..." }`. Omit `amount` for the remaining balance. Requires `Idempotency-Key`. |
+| `GET /v1/admin/refunds/:id` | Refund status (`processing`, `successful`, `failed`) |
+| `POST /v1/admin/refunds/:id/retry` | Re-ask the provider about a refund stuck in `processing` |
+
+- The refund amount is **held** in the wallet first. If the user already spent it, the refund is refused with `INSUFFICIENT_FUNDS` before the provider is called.
+- The total refunded can never exceed the payment, even under concurrent requests.
+- **Converted payments are refunded at the original rate, margin included**: the customer gets back exactly what they paid, in proportion for partial refunds, with exact totals across several partial refunds.
+- Provider refund webhooks are verified and re-checked with the provider before settling. A failed refund returns the held funds.
+
+See [ADR 0014](./docs/adr/0014-refunds.md).
+
 ## Events and background jobs
 
-Money movements record domain events (`payment.successful`, `payment.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
+Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
 
 | Queue | Purpose |
 | --- | --- |
@@ -372,7 +387,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [x] Transactions (state machine), idempotency keys, transfers
   - [ ] Organizations, permissions, API keys
-- [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, payments with FX, signed webhooks, outbox, BullMQ workers; next: refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
+- [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
