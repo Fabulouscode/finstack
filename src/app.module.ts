@@ -10,6 +10,7 @@ import { IdempotencyModule } from './idempotency/idempotency.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { PaymentsModule } from './payments/payments.module';
+import { RefundsModule } from './refunds/refunds.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { UsersModule } from './users/users.module';
 import { WalletsModule } from './wallets/wallets.module';
@@ -29,6 +30,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     FxModule,
     TransactionsModule,
     PaymentsModule,
+    RefundsModule,
     WebhooksModule,
     EventsModule,
     MaintenanceModule,

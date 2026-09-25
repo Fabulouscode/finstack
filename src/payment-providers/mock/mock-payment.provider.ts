@@ -29,13 +29,24 @@ interface MockPayment {
 
 export interface MockWebhookBody {
   id: string;
-  event: 'charge.success' | 'charge.failed';
+  event:
+    'charge.success' | 'charge.failed' | 'refund.processed' | 'refund.failed';
   data: {
     reference: string;
-    provider_reference: string;
-    amount: string;
-    currency: string;
+    provider_reference?: string;
+    amount?: string;
+    currency?: string;
   };
+}
+
+/** How the next mock refund behaves (tests and local development). */
+export type MockRefundBehaviour =
+  'successful' | 'pending' | 'rejected' | 'unavailable';
+
+interface MockRefund {
+  providerRefundReference: string;
+  reference: string;
+  status: ProviderPaymentStatus;
 }
 
 /**
@@ -49,6 +60,8 @@ export class MockPaymentProvider implements PaymentProvider {
   readonly name = 'mock';
   readonly supportedCurrencies = SUPPORTED_CURRENCIES;
   private readonly payments = new Map<string, MockPayment>();
+  private readonly refunds = new Map<string, MockRefund>();
+  private refundBehaviour: MockRefundBehaviour = 'successful';
 
   constructor(
     @Inject(paymentsConfig.KEY)
@@ -97,10 +110,43 @@ export class MockPaymentProvider implements PaymentProvider {
   }
 
   refundPayment(input: RefundPaymentInput): Promise<RefundPaymentResult> {
+    if (this.refundBehaviour === 'rejected') {
+      return Promise.reject(
+        new PaymentProviderError('Refund declined (mock)', false),
+      );
+    }
+    if (this.refundBehaviour === 'unavailable') {
+      return Promise.reject(
+        new PaymentProviderError('Mock provider timed out', true),
+      );
+    }
+    // Idempotent by our refund reference, like real providers.
+    const existing = [...this.refunds.values()].find(
+      (r) => r.reference === input.reference,
+    );
+    const refund = existing ?? {
+      providerRefundReference: `mock_refund_${randomBytes(6).toString('hex')}`,
+      reference: input.reference,
+      status:
+        this.refundBehaviour === 'pending'
+          ? ('pending' as const)
+          : ('successful' as const),
+    };
+    this.refunds.set(refund.providerRefundReference, refund);
     return Promise.resolve({
-      providerRefundReference: `mock_refund_${randomBytes(6).toString('hex')}_${input.reference}`,
-      status: 'successful',
+      providerRefundReference: refund.providerRefundReference,
+      status: refund.status,
     });
+  }
+
+  getRefund(providerRefundReference: string): Promise<RefundPaymentResult> {
+    const refund = this.refunds.get(providerRefundReference);
+    if (!refund) {
+      return Promise.reject(
+        new PaymentProviderError('Unknown mock refund', false),
+      );
+    }
+    return Promise.resolve({ providerRefundReference, status: refund.status });
   }
 
   verifyWebhookSignature(
@@ -122,18 +168,23 @@ export class MockPaymentProvider implements PaymentProvider {
     const body = JSON.parse(
       rawBody.toString('utf8'),
     ) as Partial<MockWebhookBody>;
-    const type =
-      body.event === 'charge.success'
-        ? 'payment.succeeded'
-        : body.event === 'charge.failed'
-          ? 'payment.failed'
-          : 'unknown';
+    const types: Record<string, ProviderWebhookEvent['type']> = {
+      'charge.success': 'payment.succeeded',
+      'charge.failed': 'payment.failed',
+      'refund.processed': 'refund.succeeded',
+      'refund.failed': 'refund.failed',
+    };
+    const type = types[String(body.event)] ?? 'unknown';
+    const isRefund = type === 'refund.succeeded' || type === 'refund.failed';
 
     return {
       eventId: String(body.id),
       type,
       providerType: String(body.event),
-      providerReference: body.data?.provider_reference,
+      // Refund webhooks echo our refund reference.
+      providerReference: isRefund
+        ? body.data?.reference
+        : body.data?.provider_reference,
       reference: body.data?.reference,
     };
   }
@@ -163,6 +214,30 @@ export class MockPaymentProvider implements PaymentProvider {
         amount: payment.amount.toString(),
         currency: payment.currency,
       },
+    };
+    const rawBody = Buffer.from(JSON.stringify(body));
+    return { rawBody, signature: this.sign(rawBody) };
+  }
+
+  /** Makes the next refunds succeed, stay pending, be rejected or time out. */
+  setRefundBehaviour(behaviour: MockRefundBehaviour): void {
+    this.refundBehaviour = behaviour;
+  }
+
+  /** Settles a pending mock refund and returns the signed webhook. */
+  simulateRefundOutcome(
+    providerRefundReference: string,
+    outcome: 'successful' | 'failed',
+  ): { rawBody: Buffer; signature: string } {
+    const refund = this.refunds.get(providerRefundReference);
+    if (!refund) {
+      throw new PaymentProviderError('Unknown mock refund', false);
+    }
+    refund.status = outcome;
+    const body: MockWebhookBody = {
+      id: `evt_${randomBytes(8).toString('hex')}`,
+      event: outcome === 'successful' ? 'refund.processed' : 'refund.failed',
+      data: { reference: refund.reference },
     };
     const rawBody = Buffer.from(JSON.stringify(body));
     return { rawBody, signature: this.sign(rawBody) };

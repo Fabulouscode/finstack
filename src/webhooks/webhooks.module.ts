@@ -4,6 +4,7 @@ import { OutboxModule } from '../outbox/outbox.module';
 import { PaymentProvidersModule } from '../payment-providers/payment-providers.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { QueuesModule } from '../queues/queues.module';
+import { RefundsModule } from '../refunds/refunds.module';
 import { AdminWebhooksController } from './admin-webhooks.controller';
 import { MockCheckoutController } from './mock-checkout.controller';
 import { WebhookEvent } from './webhook-event.entity';
@@ -18,6 +19,7 @@ import { WebhooksService } from './webhooks.service';
     PaymentsModule,
     OutboxModule,
     QueuesModule,
+    RefundsModule,
   ],
   controllers: [
     WebhooksController,

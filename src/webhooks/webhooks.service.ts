@@ -9,6 +9,7 @@ import { OutboxService } from '../outbox/outbox.service';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { PaymentSettlementService } from '../payments/payment-settlement.service';
 import { PaymentsService } from '../payments/payments.service';
+import { RefundsService } from '../refunds/refunds.service';
 import { WebhookEvent, WebhookEventStatus } from './webhook-event.entity';
 
 export class InvalidWebhookSignatureException extends AppException {
@@ -69,6 +70,7 @@ export class WebhooksService {
     private readonly providers: PaymentProvidersService,
     private readonly payments: PaymentsService,
     private readonly settlement: PaymentSettlementService,
+    private readonly refunds: RefundsService,
   ) {}
 
   /**
@@ -155,8 +157,31 @@ export class WebhooksService {
 
     const attempts = event.attempts + 1;
     try {
+      if (
+        (event.type === 'refund.succeeded' || event.type === 'refund.failed') &&
+        event.providerReference
+      ) {
+        // Re-checks matching refunds with the provider; the payload itself
+        // is only a hint of which refunds to look at.
+        const synced = await this.refunds.syncFromWebhook(
+          event.provider,
+          event.providerReference,
+        );
+        const status =
+          synced > 0
+            ? WebhookEventStatus.Processed
+            : WebhookEventStatus.Ignored;
+        await this.finish(
+          event.id,
+          status,
+          attempts,
+          synced > 0 ? 'refunds_synced' : 'no_matching_refund',
+        );
+        return status;
+      }
+
       const payment =
-        event.type !== 'unknown' && event.providerReference
+        event.type.startsWith('payment.') && event.providerReference
           ? await this.payments.findByProviderReference(
               event.provider,
               event.providerReference,

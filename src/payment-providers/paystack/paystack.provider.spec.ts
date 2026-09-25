@@ -166,6 +166,43 @@ describe('PaystackProvider', () => {
     ).resolves.toEqual({ providerRefundReference: '77', status: 'pending' });
   });
 
+  it.each([
+    ['processed', 'successful'],
+    ['pending', 'pending'],
+    ['processing', 'pending'],
+    ['failed', 'failed'],
+  ])('maps refund status %s to %s', async (paystackStatus, expected) => {
+    const { provider, calls } = providerReturning(200, {
+      status: true,
+      message: 'Refund retrieved',
+      data: { id: 77, status: paystackStatus },
+    });
+
+    await expect(provider.getRefund('77')).resolves.toEqual({
+      providerRefundReference: '77',
+      status: expected,
+    });
+    expect(calls[0]?.url).toBe('https://api.paystack.test/refund/77');
+  });
+
+  it('maps refund webhooks to the refunded payment reference', () => {
+    const { provider } = providerReturning(200, {});
+    const event = provider.parseWebhookEvent(
+      Buffer.from(
+        JSON.stringify({
+          event: 'refund.processed',
+          data: { id: 77, transaction_reference: 'trx_1', amount: 500 },
+        }),
+      ),
+    );
+
+    expect(event).toMatchObject({
+      type: 'refund.succeeded',
+      providerReference: 'trx_1',
+      eventId: 'refund.processed:trx_1:500:77',
+    });
+  });
+
   describe('webhooks', () => {
     const { provider } = providerReturning(200, {});
     const body = Buffer.from(

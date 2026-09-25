@@ -37,7 +37,18 @@ interface PaystackTransaction {
 
 interface PaystackWebhookBody {
   event?: string;
-  data?: { id?: number | string; reference?: string };
+  data?: {
+    id?: number | string;
+    reference?: string;
+    transaction_reference?: string;
+    amount?: number | string;
+  };
+}
+
+function mapRefundStatus(status: string): ProviderPaymentStatus {
+  if (status === 'processed') return 'successful';
+  if (status === 'failed') return 'failed';
+  return 'pending';
 }
 
 /**
@@ -115,7 +126,20 @@ export class PaystackProvider implements PaymentProvider {
     );
     return {
       providerRefundReference: String(body.data.id),
-      status: body.data.status === 'processed' ? 'successful' : 'pending',
+      status: mapRefundStatus(body.data.status),
+    };
+  }
+
+  async getRefund(
+    providerRefundReference: string,
+  ): Promise<RefundPaymentResult> {
+    const { body } = await this.call<{ id: number; status: string }>(
+      'GET',
+      `/refund/${encodeURIComponent(providerRefundReference)}`,
+    );
+    return {
+      providerRefundReference: String(body.data.id),
+      status: mapRefundStatus(body.data.status),
     };
   }
 
@@ -137,12 +161,28 @@ export class PaystackProvider implements PaymentProvider {
   parseWebhookEvent(rawBody: Buffer): ProviderWebhookEvent {
     const body = JSON.parse(rawBody.toString('utf8')) as PaystackWebhookBody;
     const event = String(body.event);
-    const type =
-      event === 'charge.success'
-        ? 'payment.succeeded'
-        : event === 'charge.failed'
-          ? 'payment.failed'
-          : 'unknown';
+    const types: Record<string, ProviderWebhookEvent['type']> = {
+      'charge.success': 'payment.succeeded',
+      'charge.failed': 'payment.failed',
+      'refund.processed': 'refund.succeeded',
+      'refund.failed': 'refund.failed',
+    };
+    const type = types[event] ?? 'unknown';
+
+    if (type === 'refund.succeeded' || type === 'refund.failed') {
+      // Refund events reference the refunded payment (our payment reference).
+      // Several partial refunds can share it, so amount and id are part of
+      // the dedupe key; the refunds are re-checked with Paystack anyway.
+      const paymentReference =
+        body.data?.transaction_reference ?? body.data?.reference;
+      return {
+        eventId: `${event}:${String(paymentReference)}:${String(body.data?.amount)}:${String(body.data?.id)}`,
+        type,
+        providerType: event,
+        providerReference: paymentReference,
+        reference: paymentReference,
+      };
+    }
 
     return {
       // Paystack events carry no event id; the event name plus the

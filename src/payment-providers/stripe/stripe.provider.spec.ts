@@ -143,6 +143,40 @@ describe('StripeProvider', () => {
     });
   });
 
+  it('reads a refund and maps refund events via our metadata reference', async () => {
+    const { provider } = providerReturning({ id: 're_1', status: 'pending' });
+    await expect(provider.getRefund('re_1')).resolves.toEqual({
+      providerRefundReference: 're_1',
+      status: 'pending',
+    });
+
+    const refundEvent = (status: string): Buffer =>
+      Buffer.from(
+        JSON.stringify({
+          id: 'evt_r',
+          type: 'refund.updated',
+          data: {
+            object: {
+              id: 're_1',
+              object: 'refund',
+              status,
+              metadata: { finstack_reference: 'rfd_1' },
+            },
+          },
+        }),
+      );
+    expect(provider.parseWebhookEvent(refundEvent('succeeded'))).toMatchObject({
+      type: 'refund.succeeded',
+      providerReference: 'rfd_1',
+    });
+    expect(provider.parseWebhookEvent(refundEvent('failed')).type).toBe(
+      'refund.failed',
+    );
+    expect(provider.parseWebhookEvent(refundEvent('pending')).type).toBe(
+      'unknown',
+    );
+  });
+
   describe('webhook signatures', () => {
     const { provider } = providerReturning({});
     const body = Buffer.from(

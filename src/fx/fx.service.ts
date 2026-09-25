@@ -6,7 +6,8 @@ import { fxConfig } from '../config/fx.config';
 import type { FxConfig } from '../config/fx.config';
 import { LedgerTransaction } from '../ledger/ledger-transaction.entity';
 import { LedgerService } from '../ledger/ledger.service';
-import { EntryDirection, LedgerAccountType } from '../ledger/ledger.types';
+import { EntryDirection } from '../ledger/ledger.types';
+import { SystemAccounts } from '../ledger/system-accounts';
 import { FxQuote } from './fx-quote.entity';
 import {
   convertFromSource,
@@ -291,24 +292,10 @@ export class FxService {
     targetPosition: string;
     targetRevenue: string;
   }> {
-    const position = (currency: string): Promise<{ id: string }> =>
-      this.ledger.ensureSystemAccount({
-        code: `system:fx-position:${currency}`,
-        name: `FX position (${currency})`,
-        type: LedgerAccountType.Asset,
-        currency,
-        allowNegativeBalance: true,
-      });
-
     const [sourcePosition, targetPosition, targetRevenue] = await Promise.all([
-      position(source),
-      position(target),
-      this.ledger.ensureSystemAccount({
-        code: `system:fx-revenue:${target}`,
-        name: `FX revenue (${target})`,
-        type: LedgerAccountType.Revenue,
-        currency: target,
-      }),
+      this.ledger.ensureSystemAccount(SystemAccounts.fxPosition(source)),
+      this.ledger.ensureSystemAccount(SystemAccounts.fxPosition(target)),
+      this.ledger.ensureSystemAccount(SystemAccounts.fxRevenue(target)),
     ]);
 
     return {

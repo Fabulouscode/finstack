@@ -15,6 +15,7 @@ import {
   PostedTransaction,
 } from '../ledger/ledger.service';
 import { EntryDirection, LedgerAccountType } from '../ledger/ledger.types';
+import { SystemAccounts } from '../ledger/system-accounts';
 import { Wallet, WalletStatus } from './wallet.entity';
 import {
   WalletAlreadyExistsException,
@@ -457,6 +458,64 @@ export class WalletsService {
     ]);
   }
 
+  /** reserve() inside a caller-owned database transaction (requires an active wallet). */
+  async reserveWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    await this.lockActiveWallets(manager, [walletId]);
+    const wallet = await this.getWallet(walletId);
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: [
+        {
+          accountId: wallet.availableAccountId,
+          direction: Debit,
+          amount: movement.amount,
+        },
+        {
+          accountId: wallet.reservedAccountId,
+          direction: Credit,
+          amount: movement.amount,
+        },
+      ],
+    });
+  }
+
+  /**
+   * release() inside a caller-owned database transaction. Works on frozen
+   * wallets too: returning held funds must never be blocked.
+   */
+  async releaseWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    const wallet = await this.getWallet(walletId);
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: [
+        {
+          accountId: wallet.reservedAccountId,
+          direction: Debit,
+          amount: movement.amount,
+        },
+        {
+          accountId: wallet.availableAccountId,
+          direction: Credit,
+          amount: movement.amount,
+        },
+      ],
+    });
+  }
+
   /** Releases a hold: reserved -> available. */
   async release(
     walletId: string,
@@ -522,15 +581,9 @@ export class WalletsService {
   }
 
   private clearingAccount(currency: string): Promise<LedgerAccount> {
-    return this.ledger.ensureSystemAccount({
-      code: `system:external-clearing:${currency}`,
-      name: `External clearing (${currency})`,
-      type: LedgerAccountType.Asset,
-      currency,
-      // Mirrors money held at payment providers/banks; may go negative
-      // while settlements are in flight.
-      allowNegativeBalance: true,
-    });
+    return this.ledger.ensureSystemAccount(
+      SystemAccounts.externalClearing(currency),
+    );
   }
 
   private async getWallet(walletId: string): Promise<Wallet> {

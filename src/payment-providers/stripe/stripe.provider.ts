@@ -38,8 +38,16 @@ interface StripeEvent {
       id?: string;
       object?: string;
       client_reference_id?: string | null;
+      status?: string;
+      metadata?: Record<string, string>;
     };
   };
+}
+
+function mapRefundStatus(status: string): ProviderPaymentStatus {
+  if (status === 'succeeded') return 'successful';
+  if (status === 'failed' || status === 'canceled') return 'failed';
+  return 'pending';
 }
 
 const SUCCEEDED_EVENTS = new Set([
@@ -162,12 +170,20 @@ export class StripeProvider implements PaymentProvider {
 
     return {
       providerRefundReference: refund.id,
-      status:
-        refund.status === 'succeeded'
-          ? 'successful'
-          : refund.status === 'failed' || refund.status === 'canceled'
-            ? 'failed'
-            : 'pending',
+      status: mapRefundStatus(refund.status),
+    };
+  }
+
+  async getRefund(
+    providerRefundReference: string,
+  ): Promise<RefundPaymentResult> {
+    const refund = await this.call<{ id: string; status: string }>(
+      'GET',
+      `/v1/refunds/${encodeURIComponent(providerRefundReference)}`,
+    );
+    return {
+      providerRefundReference: refund.id,
+      status: mapRefundStatus(refund.status),
     };
   }
 
@@ -206,6 +222,24 @@ export class StripeProvider implements PaymentProvider {
     const event = JSON.parse(rawBody.toString('utf8')) as StripeEvent;
     const type = String(event.type);
     const object = event.data?.object;
+
+    if (object?.object === 'refund') {
+      // Refunds carry our refund reference in metadata (set on creation).
+      const status = mapRefundStatus(String(object.status));
+      return {
+        eventId: String(event.id),
+        type:
+          status === 'successful'
+            ? 'refund.succeeded'
+            : status === 'failed'
+              ? 'refund.failed'
+              : 'unknown',
+        providerType: type,
+        providerReference: object.metadata?.finstack_reference,
+        reference: object.metadata?.finstack_reference,
+      };
+    }
+
     const isSession = object?.object === 'checkout.session';
 
     return {

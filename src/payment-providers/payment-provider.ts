@@ -46,7 +46,11 @@ export interface RefundPaymentResult {
 }
 
 export type ProviderEventType =
-  'payment.succeeded' | 'payment.failed' | 'unknown';
+  | 'payment.succeeded'
+  | 'payment.failed'
+  | 'refund.succeeded'
+  | 'refund.failed'
+  | 'unknown';
 
 /** A provider webhook normalised into FinStack's vocabulary. */
 export interface ProviderWebhookEvent {
@@ -55,6 +59,12 @@ export interface ProviderWebhookEvent {
   type: ProviderEventType;
   /** The provider's type string, kept for audit. */
   providerType: string;
+  /**
+   * Payment events: the provider's payment reference. Refund events: a
+   * FinStack reference the provider echoes back, either the refund's own
+   * (`rfd_...`) or the refunded payment's (`trx_...`), depending on the
+   * provider.
+   */
   providerReference?: string;
   reference?: string;
 }
@@ -78,6 +88,9 @@ export interface PaymentProvider {
   verifyPayment(input: VerifyPaymentInput): Promise<VerifyPaymentResult>;
 
   refundPayment(input: RefundPaymentInput): Promise<RefundPaymentResult>;
+
+  /** Authoritative state of a refund created with refundPayment(). */
+  getRefund(providerRefundReference: string): Promise<RefundPaymentResult>;
 
   /** Checks the webhook signature against the exact raw request body. */
   verifyWebhookSignature(
