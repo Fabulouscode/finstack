@@ -85,7 +85,13 @@ Configuration is read from environment variables (and `.env` in development), va
 | `DATABASE_SSL` | `false` | Use TLS and verify the server certificate |
 | `DATABASE_LOGGING` | `false` | Log SQL queries |
 | `DATABASE_POOL_MAX` | `10` | Maximum pool connections (1–100) |
-| `REDIS_PORT` | `6379` | Redis host port published by Compose |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Redis for queues (`REDIS_PORT` is also the host port Compose publishes) |
+| `REDIS_PASSWORD` / `REDIS_DB` | — / `0` | Redis auth and database index |
+| `QUEUE_PREFIX` | `finstack` | Namespaces queue keys in a shared Redis |
+| `WORKERS_ENABLED` | `true` | Run the outbox relay and queue workers in this process |
+| `OUTBOX_POLL_INTERVAL_MS` | `500` | How often the relay checks the outbox |
+| `WEBHOOK_MAX_ATTEMPTS` | `8` | Webhook processing attempts before dead-lettering |
+| `WEBHOOK_RETRY_BACKOFF_MS` | `2000` | First retry delay (doubles each attempt) |
 
 Each namespace lives in `src/config/<name>.config.ts` and declares its own validated schema. To use one in a provider:
 
@@ -238,7 +244,7 @@ Transactions move through explicit states (`pending → processing → successfu
 
 **Flow:** the crediting rule picks the wallet (locking an FX quote if the currencies differ) → the provider returns a checkout URL → the customer pays → the provider's **signed** webhook arrives → FinStack **re-checks the payment with the provider** and compares the amount → one database transaction credits the wallet (converting if needed), posts the ledger and marks the transaction `successful`.
 
-Duplicate webhooks are ignored, forged ones rejected, and a failure while processing is recorded on the event for retry. The wallet is credited at most once, however many webhooks and verify calls race. See [ADR 0012](./docs/adr/0012-payments-and-webhooks.md).
+Duplicate webhooks are ignored and forged ones rejected. Verified webhooks are stored and settled **asynchronously** by a BullMQ worker, with automatic retries and exponential backoff. Events that exhaust their retries can be replayed by an admin. The wallet is credited at most once, however many webhooks and verify calls race. See [ADR 0012](./docs/adr/0012-payments-and-webhooks.md).
 
 Try it locally with the mock provider:
 
@@ -252,6 +258,24 @@ curl -X POST localhost:3000/v1/payments -H "Authorization: Bearer <token>" \
 curl -X POST localhost:3000/v1/dev/mock-provider/payments/<providerReference>/complete \
   -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d '{"outcome":"successful"}'
 ```
+
+## Events and background jobs
+
+Money movements record domain events (`payment.successful`, `payment.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
+
+| Queue | Purpose |
+| --- | --- |
+| `webhooks` | Settles stored webhooks; retries with exponential backoff, then dead-letters |
+| `domain-events` | Delivers events to handlers (`src/events/`); add yours to `DOMAIN_EVENT_HANDLERS` |
+| `maintenance` | Hourly cleanup of expired idempotency keys, old refresh tokens and published outbox rows |
+
+| Endpoint (admin) | Description |
+| --- | --- |
+| `GET /v1/admin/webhook-events?status=failed` | Dead-lettered webhook events |
+| `POST /v1/admin/webhook-events/:id/replay` | Replay one (settlement is idempotent) |
+| `GET /v1/admin/queues` | Queue depths and failure counts |
+
+Set `WORKERS_ENABLED=false` on API-only instances to run workers separately. See [ADR 0013](./docs/adr/0013-outbox-and-background-jobs.md).
 
 ## FX (currency conversion)
 
@@ -300,7 +324,7 @@ Decorators are written explicitly; the Nest CLI Swagger plugin is not used. The 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health/live` | Liveness: the process is running. No dependency checks. |
-| `GET /health/ready` | Readiness: dependencies (PostgreSQL) are reachable. Returns `503` otherwise. |
+| `GET /health/ready` | Readiness: PostgreSQL and Redis are reachable. Returns `503` otherwise. |
 
 ## Testing
 
@@ -321,7 +345,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [x] Transactions (state machine), idempotency keys, transfers
   - [ ] Organizations, permissions, API keys
-- [ ] **Phase 2 — Payments** (done: provider abstraction, mock provider, payments with FX, signed webhooks; next: outbox, BullMQ, Paystack, Stripe, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
+- [ ] **Phase 2 — Payments** (done: provider abstraction, mock provider, payments with FX, signed webhooks, outbox, BullMQ workers; next: Paystack, Stripe, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 

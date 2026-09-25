@@ -48,7 +48,7 @@ The ledger reference `payment:<transaction reference>` is a further idempotency 
 | Initialise payment | Synchronous | The client needs the checkout URL now |
 | Verify endpoint | Synchronous | The client is waiting for the result after checkout |
 | Webhook: verify signature, store event | Synchronous | Must reject forgeries and dedupe before acknowledging |
-| Webhook: settle | Synchronous for now; moves to a BullMQ worker with retries and backoff | Should not depend on the provider's HTTP timeout, and needs retries independent of the provider |
+| Webhook: settle | **Asynchronous** through the outbox and the `webhooks` BullMQ queue ([ADR 0013](./0013-outbox-and-background-jobs.md)) | Should not depend on the provider's HTTP timeout; FinStack retries with backoff, independent of the provider |
 
 ## Consequences
 
