@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { PaymentsModule } from './payments/payments.module';
 import { RefundsModule } from './refunds/refunds.module';
 import { TransactionsModule } from './transactions/transactions.module';
@@ -25,6 +26,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     IdempotencyModule,
     UsersModule,
     AuthModule,
+    OrganizationsModule,
     LedgerModule,
     WalletsModule,
     FxModule,
