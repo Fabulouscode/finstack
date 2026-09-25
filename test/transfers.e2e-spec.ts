@@ -56,11 +56,14 @@ describe('Transfers and idempotency (e2e)', () => {
     bobToken = (await registerUser(app, 'bob@example.com')).tokens.accessToken;
 
     for (const token of [aliceToken, bobToken]) {
-      await request(app.getHttpServer())
-        .post('/v1/wallets')
-        .set('Authorization', `Bearer ${token}`)
-        .send({})
-        .expect(201);
+      expectStatus(
+        await request(app.getHttpServer())
+          .post('/v1/wallets')
+          .set('Authorization', `Bearer ${token}`)
+          .send({}),
+        201,
+        'open wallet',
+      );
     }
     aliceWalletId = (
       (

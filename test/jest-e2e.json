@@ -12,7 +12,8 @@
   },
   "setupFiles": [
     "reflect-metadata",
-    "<rootDir>/setup-env.ts"
+    "<rootDir>/setup-env.ts",
+    "<rootDir>/supertest-diagnostics.ts"
   ],
   "globalSetup": "<rootDir>/global-setup.ts",
   "testTimeout": 20000

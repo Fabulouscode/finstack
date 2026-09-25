@@ -18,7 +18,8 @@ export function expectStatus(
         : JSON.stringify(response.body);
     throw new Error(
       `Expected HTTP ${status} for ${label}, got ${response.status} ` +
-        `(content-type: ${response.type || 'none'}, x-request-id: ${String(response.headers['x-request-id'])}): ${body}`,
+        `(content-type: ${response.type || 'none'}, x-request-id: ${String(response.headers['x-request-id'])}, ` +
+        `x-test-app: ${String(response.headers['x-test-app'])}): ${body}`,
     );
   }
   return response;
