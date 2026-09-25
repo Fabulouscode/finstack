@@ -77,6 +77,11 @@ Configuration is read from environment variables (and `.env` in development), va
 | `PAYSTACK_SECRET_KEY` | — (required with `paystack`) | `sk_test_…` outside production, `sk_live_…` only in production. Also verifies webhooks. |
 | `PAYSTACK_BASE_URL` | `https://api.paystack.co` | Override for testing |
 | `PAYSTACK_TIMEOUT_MS` | `10000` | Paystack request timeout |
+| `STRIPE_SECRET_KEY` | — (required with `stripe`) | `sk_test_…` outside production, `sk_live_…` only in production |
+| `STRIPE_WEBHOOK_SECRET` | — (required with `stripe`) | Webhook endpoint signing secret (`whsec_…`) |
+| `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | — (required with `stripe`) | Where Checkout returns the customer |
+| `STRIPE_WEBHOOK_TOLERANCE_SECONDS` | `300` | Maximum webhook age (replay protection) |
+| `STRIPE_BASE_URL` / `STRIPE_TIMEOUT_MS` | `https://api.stripe.com` / `10000` | Override for testing / request timeout |
 | `FX_SPREAD_BPS` | `100` | Platform margin on conversions (100 = 1%) |
 | `FX_QUOTE_TTL_SECONDS` | `900` | How long a quote stays valid |
 | `FX_RATE_MAX_AGE_SECONDS` | `86400` | Refuse to quote on rates older than this |
@@ -242,7 +247,7 @@ Transactions move through explicit states (`pending → processing → successfu
 | `POST /v1/payments` | Bearer + `Idempotency-Key` | Start a payment: `{ "amount": 1550000, "currency": "NGN" }` → hosted checkout URL |
 | `GET /v1/payments/:id` | Bearer | Payment status (and the FX conversion, if any) |
 | `POST /v1/payments/:id/verify` | Bearer | Ask the provider and settle (e.g. after the customer returns from checkout) |
-| `POST /v1/webhooks/:provider` | Signature | Provider callbacks (`mock`, `paystack`) |
+| `POST /v1/webhooks/:provider` | Signature | Provider callbacks (`mock`, `paystack`, `stripe`) |
 | `POST /v1/dev/mock-provider/payments/:providerReference/complete` | Bearer | **Dev only:** finish a mock checkout (sends a signed webhook) |
 
 **Flow:** the crediting rule picks the wallet (locking an FX quote if the currencies differ) → the provider returns a checkout URL → the customer pays → the provider's **signed** webhook arrives → FinStack **re-checks the payment with the provider** and compares the amount → one database transaction credits the wallet (converting if needed), posts the ledger and marks the transaction `successful`.
@@ -268,10 +273,11 @@ curl -X POST localhost:3000/v1/dev/mock-provider/payments/<providerReference>/co
 | --- | --- | --- | --- |
 | `mock` | all supported | `/v1/webhooks/mock` | Development only; refused in production |
 | `paystack` | NGN, USD, GHS, ZAR, KES | `/v1/webhooks/paystack` | Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. |
+| `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
 
 A provider is one class implementing `PaymentProvider` (`src/payment-providers/payment-provider.ts`): initialise, verify, refund, verify the webhook signature, parse the event. See `src/payment-providers/paystack/` for a complete adapter. Provider errors are classified for you by `JsonHttpClient`: timeouts, 5xx and 429 are retryable (the payment stays `pending`), and other 4xx responses are rejections.
 
-The Paystack adapter is tested against a local fake of the Paystack API (`test/utils/fake-paystack.ts`), which uses the same endpoints, response envelopes and HMAC-SHA512 webhook signatures.
+The Paystack and Stripe adapters are tested against local fakes of each API (`test/utils/fake-paystack.ts`, `test/utils/fake-stripe.ts`). The fakes use the same endpoints, encodings, idempotency behaviour and webhook signature schemes. Stripe webhooks older than `STRIPE_WEBHOOK_TOLERANCE_SECONDS` are rejected even with a valid signature, which prevents replays.
 
 ## Events and background jobs
 
@@ -359,7 +365,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [x] Transactions (state machine), idempotency keys, transfers
   - [ ] Organizations, permissions, API keys
-- [ ] **Phase 2 — Payments** (done: provider abstraction, mock and Paystack providers, payments with FX, signed webhooks, outbox, BullMQ workers; next: Stripe, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
+- [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, payments with FX, signed webhooks, outbox, BullMQ workers; next: refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 

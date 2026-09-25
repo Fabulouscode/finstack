@@ -16,6 +16,8 @@ Payment logic depends only on the `PaymentProvider` interface (`initializePaymen
 - **mock:** in memory, with real HMAC-SHA256-signed webhooks. Refused in production by config validation.
 - **paystack:** calls the REST API through `JsonHttpClient` (Node's built-in `fetch` with timeouts; no SDK). Webhooks are verified with HMAC-SHA512 over the raw body. Paystack events have no id, so `event:data.id` is used for duplicate detection. Test keys are refused in production, and live keys everywhere else. It's tested against a local fake of the Paystack API.
 
+- **stripe:** hosted Checkout Sessions over the form-encoded REST API. Our reference is the session's `client_reference_id` and the `Idempotency-Key`, so re-initialising returns the same session. Webhooks use Stripe's `t=…,v1=…` scheme: HMAC-SHA256 over `"{t}.{raw body}"`. Signatures older than `STRIPE_WEBHOOK_TOLERANCE_SECONDS` are rejected (replay protection), and several `v1` values are accepted to allow secret rotation. Tested against a local fake of the Stripe API.
+
 `JsonHttpClient` classifies provider failures: network errors, timeouts, 5xx and 429 are *retryable* (the outcome is unknown, so the payment stays `pending`); other 4xx are *rejections* (the payment fails with `PROVIDER_REJECTED`).
 
 ### Initialisation
