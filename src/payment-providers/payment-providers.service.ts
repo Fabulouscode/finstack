@@ -1,11 +1,32 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppException } from '../common/http/app.exception';
 import { paymentsConfig } from '../config/payments.config';
+import { ConfigValidationError } from '../config/validate-config';
 import type { PaymentsConfig } from '../config/payments.config';
 import { MockPaymentProvider } from './mock/mock-payment.provider';
 import { PaymentProvider } from './payment-provider';
 import { PaystackProvider } from './paystack/paystack.provider';
 import { StripeProvider } from './stripe/stripe.provider';
+
+export class ProviderNotAllowedForCurrencyException extends AppException {
+  constructor(currency: string, required: string) {
+    super(
+      'PROVIDER_NOT_ALLOWED_FOR_CURRENCY',
+      `${currency} payments must use ${required}`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
+export class CurrencyNotSupportedByProviderException extends AppException {
+  constructor(provider: string, currency: string) {
+    super(
+      'CURRENCY_NOT_SUPPORTED_BY_PROVIDER',
+      `${provider} cannot charge in ${currency}`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
 
 export class UnknownPaymentProviderException extends AppException {
   constructor(name: string) {
@@ -37,6 +58,45 @@ export class PaymentProvidersService {
         )
         .map((provider) => [provider.name, provider]),
     );
+
+    // A route to a provider that can't charge the currency is a deployment
+    // error: refuse to start rather than fail on the first payment.
+    const invalid = Object.entries(config.currencyRoutes)
+      .filter(
+        ([currency, name]) =>
+          !this.providers.get(name)?.supportedCurrencies.includes(currency),
+      )
+      .map(
+        ([currency, name]) =>
+          `PAYMENT_CURRENCY_ROUTES: ${name} cannot charge in ${currency}`,
+      );
+    if (invalid.length > 0) {
+      throw new ConfigValidationError('payments', invalid);
+    }
+  }
+
+  /**
+   * Picks the provider for a payment. A configured currency route always
+   * wins (and rejects a conflicting explicit choice); otherwise the requested
+   * or default provider is used, provided it can charge the currency.
+   */
+  select(currency: string, requested?: string): PaymentProvider {
+    const routed = this.config.currencyRoutes[currency];
+    if (routed) {
+      if (requested && requested !== routed) {
+        throw new ProviderNotAllowedForCurrencyException(currency, routed);
+      }
+      return this.get(routed);
+    }
+
+    const provider = this.get(requested ?? this.defaultName);
+    if (!provider.supportedCurrencies.includes(currency)) {
+      throw new CurrencyNotSupportedByProviderException(
+        provider.name,
+        currency,
+      );
+    }
+    return provider;
   }
 
   get defaultName(): string {

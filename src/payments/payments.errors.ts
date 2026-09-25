@@ -17,13 +17,3 @@ export class PaymentProviderUnavailableException extends AppException {
     );
   }
 }
-
-export class CurrencyNotSupportedByProviderException extends AppException {
-  constructor(provider: string, currency: string) {
-    super(
-      'CURRENCY_NOT_SUPPORTED_BY_PROVIDER',
-      `${provider} cannot charge in ${currency}`,
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-  }
-}

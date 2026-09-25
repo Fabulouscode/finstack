@@ -73,6 +73,40 @@ describe('Stripe provider (e2e, fake Stripe API)', () => {
     process.env = originalEnv;
   });
 
+  describe('with PAYMENT_CURRENCY_ROUTES=USD:stripe and mock as the default', () => {
+    beforeEach(async () => {
+      await app.close();
+      process.env.DEFAULT_PAYMENT_PROVIDER = 'mock';
+      process.env.PAYMENT_CURRENCY_ROUTES = 'USD:stripe';
+      app = await createTestApp();
+      await resetDatabase(app.get(DataSource));
+      token = (await registerUser(app, 'ada@example.com')).tokens.accessToken;
+      expectStatus(
+        await authed('post', '/v1/wallets').send({}),
+        201,
+        'open wallet',
+      );
+    });
+
+    it('sends USD payments through Stripe even though the default is mock', async () => {
+      const payment = await startPayment('route-1');
+
+      expect(payment.provider).toBe('stripe');
+    });
+
+    it('rejects a request to pay USD through another provider', async () => {
+      const response = await authed('post', '/v1/payments')
+        .set('Idempotency-Key', 'route-2')
+        .send({ amount: 2_500, currency: 'USD', provider: 'mock' })
+        .expect(422);
+
+      expect(response.body).toMatchObject({
+        code: 'PROVIDER_NOT_ALLOWED_FOR_CURRENCY',
+        detail: 'USD payments must use stripe',
+      });
+    });
+  });
+
   it('pays through a Checkout Session and settles from the signed event', async () => {
     const payment = await startPayment('st-1');
     expect(payment).toMatchObject({ provider: 'stripe', status: 'pending' });

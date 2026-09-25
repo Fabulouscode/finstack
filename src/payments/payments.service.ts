@@ -18,7 +18,6 @@ import { UsersService } from '../users/users.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { Payment } from './payment.entity';
 import {
-  CurrencyNotSupportedByProviderException,
   PaymentNotFoundException,
   PaymentProviderUnavailableException,
 } from './payments.errors';
@@ -81,15 +80,11 @@ export class PaymentsService {
       );
     }
 
-    const providerName = input.provider ?? this.providers.defaultName;
-    // Fail fast, before creating any records.
-    const provider = this.providers.get(providerName);
-    if (!provider.supportedCurrencies.includes(input.currency)) {
-      throw new CurrencyNotSupportedByProviderException(
-        providerName,
-        input.currency,
-      );
-    }
+    // Fails fast (before creating any records) on routing or currency errors.
+    const providerName = this.providers.select(
+      input.currency,
+      input.provider,
+    ).name;
 
     const target = await this.wallets.resolveCreditTarget(
       userId,

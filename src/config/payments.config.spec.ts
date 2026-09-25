@@ -17,6 +17,7 @@ describe('paymentsConfig', () => {
     expect(paymentsConfig()).toEqual({
       enabledProviders: ['mock'],
       defaultProvider: 'mock',
+      currencyRoutes: {},
       mock: { webhookSecret: secret },
       paystack: {
         secretKey: '',
@@ -125,6 +126,34 @@ describe('paymentsConfig', () => {
       expect(() => paymentsConfig()).toThrow(
         /live key may only be used in production/,
       );
+    });
+  });
+
+  describe('currency routes', () => {
+    it('parses routes to enabled providers', () => {
+      process.env.PAYMENT_PROVIDERS = 'mock,paystack';
+      process.env.PAYSTACK_SECRET_KEY = 'sk_test_abc123';
+      process.env.PAYMENT_CURRENCY_ROUTES = 'NGN:paystack,USD:mock';
+
+      expect(paymentsConfig().currencyRoutes).toEqual({
+        NGN: 'paystack',
+        USD: 'mock',
+      });
+    });
+
+    it.each([
+      [
+        'a provider that is not enabled',
+        'USD:stripe',
+        /not in PAYMENT_PROVIDERS/,
+      ],
+      ['an unsupported currency', 'XXX:mock', /unsupported currency XXX/],
+      ['the same currency twice', 'USD:mock,USD:mock', /routed twice/],
+      ['malformed syntax', 'usd=stripe', /must look like/],
+    ])('rejects %s', (_label, routes, message) => {
+      process.env.PAYMENT_CURRENCY_ROUTES = routes;
+
+      expect(() => paymentsConfig()).toThrow(message);
     });
   });
 

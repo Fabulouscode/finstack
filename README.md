@@ -73,6 +73,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | `IDEMPOTENCY_LOCK_TIMEOUT_SECONDS` | `60` | After this, an in-progress key may be taken over by a retry |
 | `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
 | `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
+| `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `USD:stripe,NGN:paystack` |
 | `MOCK_PROVIDER_WEBHOOK_SECRET` | — (required with `mock`) | HMAC secret the mock provider signs webhooks with |
 | `PAYSTACK_SECRET_KEY` | — (required with `paystack`) | `sk_test_…` outside production, `sk_live_…` only in production. Also verifies webhooks. |
 | `PAYSTACK_BASE_URL` | `https://api.paystack.co` | Override for testing |
@@ -274,6 +275,12 @@ curl -X POST localhost:3000/v1/dev/mock-provider/payments/<providerReference>/co
 | `mock` | all supported | `/v1/webhooks/mock` | Development only; refused in production |
 | `paystack` | NGN, USD, GHS, ZAR, KES | `/v1/webhooks/paystack` | Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. |
 | `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
+
+**Routing by currency.** `PAYMENT_CURRENCY_ROUTES` pins currencies to providers, e.g. `USD:stripe,NGN:paystack`:
+
+- A payment in a routed currency always uses that provider. Asking for another returns `422 PROVIDER_NOT_ALLOWED_FOR_CURRENCY`.
+- Other currencies use the requested provider or `DEFAULT_PAYMENT_PROVIDER`.
+- The app refuses to start if a route points to a provider that isn't enabled or can't charge that currency.
 
 A provider is one class implementing `PaymentProvider` (`src/payment-providers/payment-provider.ts`): initialise, verify, refund, verify the webhook signature, parse the event. See `src/payment-providers/paystack/` for a complete adapter. Provider errors are classified for you by `JsonHttpClient`: timeouts, 5xx and 429 are retryable (the payment stays `pending`), and other 4xx responses are rejections.
 

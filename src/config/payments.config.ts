@@ -13,6 +13,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { SUPPORTED_CURRENCIES } from '../common/money/currency';
 import { ConfigValidationError, validateConfig } from './validate-config';
 
 export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack', 'stripe'] as const;
@@ -114,6 +115,17 @@ class PaymentsEnvironmentVariables {
     require_protocol: true,
   })
   STRIPE_CANCEL_URL?: string;
+
+  /**
+   * Currencies that must always use a specific provider, e.g.
+   * `USD:stripe,NGN:paystack`. Other currencies use the requested or
+   * default provider.
+   */
+  @IsOptional()
+  @Matches(/^([A-Z]{3}:[a-z]+)(,[A-Z]{3}:[a-z]+)*$/, {
+    message: 'PAYMENT_CURRENCY_ROUTES must look like USD:stripe,NGN:paystack',
+  })
+  PAYMENT_CURRENCY_ROUTES?: string;
 }
 
 export const paymentsConfig = registerAs('payments', () => {
@@ -161,6 +173,26 @@ export const paymentsConfig = registerAs('payments', () => {
       );
     }
   }
+  const currencyRoutes: Record<string, PaymentProviderName> = {};
+  for (const route of (env.PAYMENT_CURRENCY_ROUTES ?? '')
+    .split(',')
+    .filter(Boolean)) {
+    const [currency = '', provider = ''] = route.split(':');
+    if (!(SUPPORTED_CURRENCIES as string[]).includes(currency)) {
+      violations.push(
+        `PAYMENT_CURRENCY_ROUTES: unsupported currency ${currency}`,
+      );
+    } else if (!(enabled as string[]).includes(provider)) {
+      violations.push(
+        `PAYMENT_CURRENCY_ROUTES: ${currency} routes to ${provider}, which is not in PAYMENT_PROVIDERS`,
+      );
+    } else if (currencyRoutes[currency]) {
+      violations.push(`PAYMENT_CURRENCY_ROUTES: ${currency} is routed twice`);
+    } else {
+      currencyRoutes[currency] = provider as PaymentProviderName;
+    }
+  }
+
   if (enabled.includes('stripe')) {
     const key = env.STRIPE_SECRET_KEY;
     const production = process.env.NODE_ENV === 'production';
@@ -193,6 +225,7 @@ export const paymentsConfig = registerAs('payments', () => {
   return {
     enabledProviders: enabled,
     defaultProvider: defaultProvider as PaymentProviderName,
+    currencyRoutes,
     mock: { webhookSecret: env.MOCK_PROVIDER_WEBHOOK_SECRET ?? '' },
     paystack: {
       secretKey: env.PAYSTACK_SECRET_KEY ?? '',
