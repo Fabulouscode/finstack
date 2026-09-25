@@ -184,6 +184,27 @@ curl localhost:3000/v1/users/me -H "Authorization: Bearer <accessToken>"
 - Every route requires a Bearer token by default. Mark public routes with `@Public()`, restrict by platform role with `@Roles(UserRole.Admin)`, and read the caller with `@CurrentUser()`.
 - Details and trade-offs: [ADR 0006](./docs/adr/0006-authentication-and-sessions.md).
 
+## Organizations and API keys
+
+Businesses are **organizations**. Members have a role (owner, admin, member, viewer) that grants permissions. Servers call the API with **API keys** scoped to one organization.
+
+| Endpoint | Permission | Description |
+| --- | --- | --- |
+| `POST /v1/organizations` | signed in | Create an organization (you become the owner) |
+| `GET /v1/organizations` | signed in | My organizations, with my role |
+| `GET /v1/organizations/:id` | `organization:read` (API key allowed) | Organization details |
+| `GET` / `POST /v1/organizations/:id/members` | `organization:read` / `members:manage` | List or add members |
+| `PATCH` / `DELETE /v1/organizations/:id/members/:userId` | `members:manage` | Change role or remove (the owner is protected) |
+| `POST /v1/organizations/:id/transfer-ownership` | owner | Make another member the owner |
+| `POST` / `GET /v1/organizations/:id/api-keys` | `api_keys:manage` | Create (secret shown once) or list keys |
+| `DELETE /v1/organizations/:id/api-keys/:keyId` | `api_keys:manage` | Revoke a key |
+
+```bash
+curl localhost:3000/v1/organizations/<id> -H "X-API-Key: fsk_test_..."
+```
+
+API keys are accepted **only on endpoints marked for them**. They're stored as hashes, bound to one organization, limited to their scopes, and can be revoked or set to expire. Non-members get `404` for an organization, so ids can't be probed. See [ADR 0015](./docs/adr/0015-organizations-and-api-keys.md).
+
 ## Wallets and ledger
 
 Every amount is an **integer in minor units** (cents, kobo) plus an ISO 4217 currency: `15000` USD is $150.00. Supported currencies are listed in `src/common/money/currency.ts`.
@@ -386,7 +407,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Double-entry ledger and wallets (single or multi-currency, primary wallet)
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [x] Transactions (state machine), idempotency keys, transfers
-  - [ ] Organizations, permissions, API keys
+  - [x] Organizations, role-based permissions, API keys
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
