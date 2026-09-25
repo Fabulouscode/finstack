@@ -11,7 +11,12 @@ Incoming payments cross a trust boundary twice: FinStack asks a provider to char
 
 ### Provider abstraction
 
-Payment logic depends only on the `PaymentProvider` interface (`initializePayment`, `verifyPayment`, `refundPayment`, `verifyWebhookSignature`, `parseWebhookEvent`). Adapters are registered in `PaymentProvidersService`. The first adapter is an in-memory **mock provider** with real HMAC-SHA256-signed webhooks. It's refused in production by config validation. Paystack and Stripe adapters implement the same interface.
+Payment logic depends only on the `PaymentProvider` interface (`initializePayment`, `verifyPayment`, `refundPayment`, `verifyWebhookSignature`, `parseWebhookEvent`). Adapters are registered in `PaymentProvidersService`, and each declares the currencies it can charge, checked before any record is created. Adapters so far:
+
+- **mock:** in memory, with real HMAC-SHA256-signed webhooks. Refused in production by config validation.
+- **paystack:** calls the REST API through `JsonHttpClient` (Node's built-in `fetch` with timeouts; no SDK). Webhooks are verified with HMAC-SHA512 over the raw body. Paystack events have no id, so `event:data.id` is used for duplicate detection. Test keys are refused in production, and live keys everywhere else. It's tested against a local fake of the Paystack API.
+
+`JsonHttpClient` classifies provider failures: network errors, timeouts, 5xx and 429 are *retryable* (the outcome is unknown, so the payment stays `pending`); other 4xx are *rejections* (the payment fails with `PROVIDER_REJECTED`).
 
 ### Initialisation
 
