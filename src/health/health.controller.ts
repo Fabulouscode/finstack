@@ -9,6 +9,7 @@ import {
 } from '@nestjs/terminus';
 import { Public } from '../auth/decorators/public.decorator';
 import { HealthCheckFilter } from './health-check.filter';
+import { RedisHealthIndicator } from './redis.health';
 
 // Probes are unversioned (/health/*) and never rate limited: orchestrators
 // poll them constantly and expect a stable URL.
@@ -21,6 +22,7 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly database: TypeOrmHealthIndicator,
+    private readonly redis: RedisHealthIndicator,
   ) {}
 
   @Get('live')
@@ -39,11 +41,12 @@ export class HealthController {
   @ApiOperation({
     summary: 'Readiness probe',
     description:
-      'Reports whether the instance can serve traffic. Returns 503 when PostgreSQL is unreachable (1.5s timeout).',
+      'Reports whether the instance can serve traffic. Returns 503 when PostgreSQL or Redis is unreachable (1.5s timeout each).',
   })
   ready(): Promise<HealthCheckResult> {
     return this.health.check([
       () => this.database.pingCheck('database').withTimeout(1500),
+      () => this.redis.pingCheck('redis'),
     ]);
   }
 }

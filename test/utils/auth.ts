@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AuthResponseDto } from '../../src/auth/dto/auth.dto';
+import { expectStatus } from './http';
 
 /** Registers a user through the API and returns the session. */
 export async function registerUser(
@@ -15,8 +16,7 @@ export async function registerUser(
       password: 'correct-horse-battery-staple',
       firstName: 'Test',
       lastName: 'User',
-    })
-    .expect(201);
+    });
 
-  return response.body as AuthResponseDto;
+  return expectStatus(response, 201, 'register').body as AuthResponseDto;
 }

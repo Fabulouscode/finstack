@@ -77,6 +77,10 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     )
     .addTag('Webhooks', 'Signed provider callbacks')
     .addTag('FX', 'Exchange rates and locked conversion quotes')
+    .addTag(
+      'Admin',
+      'Operations: webhook events, replay, queue health (admin role)',
+    )
     .addTag('Health', 'Liveness and readiness probes')
     .build();
 

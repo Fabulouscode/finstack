@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AppException } from '../common/http/app.exception';
 import { isUniqueViolation } from '../database/postgres-errors';
+import { OutboxService } from '../outbox/outbox.service';
 import { UsersService } from '../users/users.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { Transaction } from './transaction.entity';
@@ -70,6 +71,7 @@ export class TransfersService {
     private readonly transactions: TransactionsService,
     private readonly wallets: WalletsService,
     private readonly users: UsersService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async transfer(
@@ -129,7 +131,7 @@ export class TransfersService {
           metadata: { transactionId: transaction.id },
         });
 
-        return this.transactions.transition(
+        const completed = await this.transactions.transition(
           manager,
           transaction.id,
           TransactionStatus.Successful,
@@ -138,6 +140,20 @@ export class TransfersService {
             completedAt: new Date(),
           },
         );
+        await this.outbox.add(manager, {
+          type: 'transfer.completed',
+          aggregateType: 'transaction',
+          aggregateId: completed.id,
+          payload: {
+            transactionId: completed.id,
+            reference: completed.reference,
+            senderUserId: userId,
+            recipientUserId: recipient.id,
+            amount: completed.amount.toString(),
+            currency: completed.currency,
+          },
+        });
+        return completed;
       });
     } catch (error) {
       // A concurrent request with the same key committed first: return it.

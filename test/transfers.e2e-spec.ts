@@ -9,6 +9,7 @@ import {
 import { WalletResponseDto } from '../src/wallets/dto/wallet.dto';
 import { WalletsService } from '../src/wallets/wallets.service';
 import { registerUser } from './utils/auth';
+import { expectStatus } from './utils/http';
 import { createTestApp } from './utils/create-test-app';
 import { resetDatabase } from './utils/database';
 
@@ -229,6 +230,6 @@ describe('Transfers and idempotency (e2e)', () => {
     [{ recipientEmail: 'bob@example.com', amount: '100' }],
     [{ recipientEmail: 'not-an-email', amount: 100 }],
   ])('validates %p', async (payload) => {
-    await transfer(payload, 'key-v').expect(400);
+    expectStatus(await transfer(payload, 'key-v'), 400, 'invalid transfer');
   });
 });

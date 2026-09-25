@@ -267,14 +267,13 @@ export class FxService {
     manager: EntityManager,
     quote: FxQuote,
   ): Promise<ConversionResult> {
-    const [sourceLeg, targetLeg] = await Promise.all([
-      manager.findOneByOrFail(LedgerTransaction, {
-        id: quote.sourceTransactionId ?? '',
-      }),
-      manager.findOneByOrFail(LedgerTransaction, {
-        id: quote.targetTransactionId ?? '',
-      }),
-    ]);
+    // Sequential: both reads run on the caller's transaction connection.
+    const sourceLeg = await manager.findOneByOrFail(LedgerTransaction, {
+      id: quote.sourceTransactionId ?? '',
+    });
+    const targetLeg = await manager.findOneByOrFail(LedgerTransaction, {
+      id: quote.targetTransactionId ?? '',
+    });
     return { quote, sourceLeg, targetLeg, replayed: true };
   }
 

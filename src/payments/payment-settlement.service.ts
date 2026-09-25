@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { toCurrencyCode } from '../common/money/currency';
 import { FxQuote } from '../fx/fx-quote.entity';
 import { FxService } from '../fx/fx.service';
+import { OutboxService } from '../outbox/outbox.service';
 import {
   PaymentProviderError,
   VerifyPaymentResult,
@@ -41,6 +42,7 @@ export class PaymentSettlementService {
     private readonly transactions: TransactionsService,
     private readonly wallets: WalletsService,
     private readonly fx: FxService,
+    private readonly outbox: OutboxService,
   ) {}
 
   /**
@@ -129,6 +131,7 @@ export class PaymentSettlementService {
       const reference = `payment:${transaction.reference}`;
       const description = `Payment ${transaction.reference}`;
       let ledgerTransactionId: string;
+      let credited = { amount: payment.amount, currency: payment.currency };
 
       if (payment.fxQuoteId) {
         const quoteId = await this.usableQuoteId(manager, payment);
@@ -142,6 +145,10 @@ export class PaymentSettlementService {
           },
         );
         ledgerTransactionId = conversion.targetLeg.id;
+        credited = {
+          amount: conversion.quote.targetAmount,
+          currency: conversion.quote.targetCurrency,
+        };
       } else {
         const posted = await this.wallets.depositWithin(
           manager,
@@ -166,6 +173,27 @@ export class PaymentSettlementService {
           completedAt: new Date(),
         },
       );
+      // Committed atomically with the credit: the event exists iff the money moved.
+      await this.outbox.add(manager, {
+        type: 'payment.successful',
+        aggregateType: 'transaction',
+        aggregateId: transaction.id,
+        payload: {
+          transactionId: transaction.id,
+          reference: transaction.reference,
+          paymentId: payment.id,
+          userId: payment.userId,
+          walletId: payment.walletId,
+          charged: {
+            amount: payment.amount.toString(),
+            currency: payment.currency,
+          },
+          credited: {
+            amount: credited.amount.toString(),
+            currency: credited.currency,
+          },
+        },
+      });
       return 'credited';
     });
   }
@@ -233,6 +261,18 @@ export class PaymentSettlementService {
           providerReference: payment.providerReference,
         },
       );
+      await this.outbox.add(manager, {
+        type: 'payment.failed',
+        aggregateType: 'transaction',
+        aggregateId: transaction.id,
+        payload: {
+          transactionId: transaction.id,
+          reference: transaction.reference,
+          paymentId: payment.id,
+          userId: payment.userId,
+          failureCode,
+        },
+      });
       return 'failed';
     });
   }

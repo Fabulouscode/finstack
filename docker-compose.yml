@@ -65,6 +65,9 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       PORT: 3000
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env (cp .env.example .env)}
+      MOCK_PROVIDER_WEBHOOK_SECRET: ${MOCK_PROVIDER_WEBHOOK_SECRET:-}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
       - '${PORT:-3000}:3000'
     depends_on:

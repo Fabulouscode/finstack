@@ -6,7 +6,9 @@ import { databaseConfig } from './database.config';
 import { fxConfig } from './fx.config';
 import { httpConfig } from './http.config';
 import { idempotencyConfig } from './idempotency.config';
+import { jobsConfig } from './jobs.config';
 import { paymentsConfig } from './payments.config';
+import { redisConfig } from './redis.config';
 import { walletsConfig } from './wallets.config';
 
 /**
@@ -27,7 +29,9 @@ import { walletsConfig } from './wallets.config';
         fxConfig,
         httpConfig,
         idempotencyConfig,
+        jobsConfig,
         paymentsConfig,
+        redisConfig,
         walletsConfig,
       ],
     }),

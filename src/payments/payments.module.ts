@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FxModule } from '../fx/fx.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
+import { OutboxModule } from '../outbox/outbox.module';
 import { PaymentProvidersModule } from '../payment-providers/payment-providers.module';
 import { Transaction } from '../transactions/transaction.entity';
 import { TransactionsModule } from '../transactions/transactions.module';
@@ -16,6 +17,7 @@ import { PaymentsService } from './payments.service';
   imports: [
     TypeOrmModule.forFeature([Payment, Transaction]),
     IdempotencyModule,
+    OutboxModule,
     PaymentProvidersModule,
     TransactionsModule,
     WalletsModule,

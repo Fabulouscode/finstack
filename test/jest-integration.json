@@ -12,7 +12,8 @@
   },
   "setupFiles": [
     "reflect-metadata",
-    "<rootDir>/setup-env.ts"
+    "<rootDir>/setup-env.ts",
+    "<rootDir>/setup-integration-env.ts"
   ],
   "globalSetup": "<rootDir>/global-setup.ts"
 }

@@ -561,11 +561,11 @@ export class WalletsService {
           },
           manager,
         );
-      const [available, pending, reserved] = await Promise.all([
-        account('available'),
-        account('pending'),
-        account('reserved'),
-      ]);
+      // Sequential on purpose: queries on one transaction's connection must
+      // not run concurrently (pg queues them today and will reject them in v9).
+      const available = await account('available');
+      const pending = await account('pending');
+      const reserved = await account('reserved');
 
       return manager.save(
         manager.create(Wallet, {

@@ -14,5 +14,6 @@
     "reflect-metadata",
     "<rootDir>/setup-env.ts"
   ],
-  "globalSetup": "<rootDir>/global-setup.ts"
+  "globalSetup": "<rootDir>/global-setup.ts",
+  "testTimeout": 20000
 }
