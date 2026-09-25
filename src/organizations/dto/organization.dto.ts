@@ -71,14 +71,17 @@ export class OrganizationResponseDto {
 
   @ApiProperty({
     enum: OrgRole,
-    description: 'Your role in this organization',
+    nullable: true,
+    description:
+      'Your role in this organization (null when calling with an API key)',
     example: OrgRole.Owner,
   })
-  role: OrgRole;
+  role: OrgRole | null;
 
   @ApiProperty({
     type: [String],
-    description: 'What your role allows',
+    description:
+      "What you may do: your role's permissions, or the API key's scopes",
     example: ['organization:read'],
   })
   permissions: string[];
@@ -90,12 +93,22 @@ export class OrganizationResponseDto {
     organization,
     role,
   }: OrganizationWithRole): OrganizationResponseDto {
+    return OrganizationResponseDto.forAccess(organization, role, [
+      ...ROLE_PERMISSIONS[role],
+    ]);
+  }
+
+  static forAccess(
+    organization: OrganizationWithRole['organization'],
+    role: OrgRole | null,
+    permissions: string[],
+  ): OrganizationResponseDto {
     return {
       id: organization.id,
       name: organization.name,
       status: organization.status,
       role,
-      permissions: [...ROLE_PERMISSIONS[role]],
+      permissions,
       createdAt: organization.createdAt,
     };
   }

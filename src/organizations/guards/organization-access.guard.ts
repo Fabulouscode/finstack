@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ApiKeyScopeMissingException } from '../../api-keys/api-keys.errors';
 import { OrgPermission, roleHasPermission } from '../organization-permissions';
 import { OrganizationStatus } from '../organization.entity';
 import {
@@ -14,7 +15,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Authorises organization-scoped routes (`/organizations/:organizationId/...`):
- * the user must be a member whose role grants the route's permission.
+ * a user must be a member whose role grants the route's permission; an API
+ * key must belong to the organization and carry the permission as a scope.
  * Non-members get 404, so organization ids can't be probed.
  */
 @Injectable()
@@ -36,7 +38,27 @@ export class OrganizationAccessGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<OrganizationRequest>();
     const param = request.params.organizationId;
     const organizationId = typeof param === 'string' ? param : undefined;
-    if (!organizationId || !UUID.test(organizationId) || !request.user) {
+    if (!organizationId || !UUID.test(organizationId)) {
+      throw new OrganizationNotFoundException();
+    }
+
+    // API key: bound to one organization, limited to its scopes. (Its
+    // organization was checked to be active when the key authenticated.)
+    if (request.apiKey) {
+      if (request.apiKey.organizationId !== organizationId) {
+        throw new OrganizationNotFoundException();
+      }
+      if (!request.apiKey.scopes.includes(permission)) {
+        throw new ApiKeyScopeMissingException(permission);
+      }
+      request.organizationAccess = {
+        organizationId,
+        apiKeyId: request.apiKey.id,
+      };
+      return true;
+    }
+
+    if (!request.user) {
       throw new OrganizationNotFoundException();
     }
 

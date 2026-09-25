@@ -18,6 +18,7 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -26,7 +27,8 @@ import {
   ApiProblemResponse,
   ApiValidationProblemResponse,
 } from '../docs/api-problem-response.decorator';
-import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
+import { AllowApiKey } from '../api-keys/api-key-principal';
+import { ACCESS_TOKEN_SCHEME, API_KEY_SCHEME } from '../docs/swagger';
 import {
   AddMemberRequestDto,
   ChangeRoleRequestDto,
@@ -82,15 +84,27 @@ export class OrganizationsController {
 
   @Get(':organizationId')
   @RequireOrgPermission(OrgPermission.ReadOrganization)
-  @ApiOperation({ summary: 'Get an organization' })
+  @AllowApiKey()
+  @ApiSecurity(API_KEY_SCHEME)
+  @ApiOperation({
+    summary: 'Get an organization',
+    description:
+      'Also callable with an API key that has the organization:read scope.',
+  })
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiProblemResponse(404, 'ORGANIZATION_NOT_FOUND (also for non-members)')
   async get(
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
     @Req() request: OrganizationRequest,
   ): Promise<OrganizationResponseDto> {
+    const organization = await this.organizations.get(organizationId);
+    if (request.apiKey) {
+      return OrganizationResponseDto.forAccess(organization, null, [
+        ...request.apiKey.scopes,
+      ]);
+    }
     return OrganizationResponseDto.from({
-      organization: await this.organizations.get(organizationId),
+      organization,
       role: request.organizationAccess?.role ?? OrgRole.Viewer,
     });
   }

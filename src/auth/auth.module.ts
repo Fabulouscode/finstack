@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthConfig, authConfig } from '../config/auth.config';
+import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -16,6 +17,7 @@ import { RefreshTokenService } from './tokens/refresh-token.service';
 @Module({
   imports: [
     UsersModule,
+    ApiKeysModule,
     TypeOrmModule.forFeature([RefreshToken]),
     JwtModule.registerAsync({
       inject: [authConfig.KEY],
