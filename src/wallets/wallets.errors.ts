@@ -3,8 +3,8 @@ import { AppException } from '../common/http/app.exception';
 
 /** Also used for wallets owned by someone else, so wallet ids can't be probed. */
 export class WalletNotFoundException extends AppException {
-  constructor() {
-    super('WALLET_NOT_FOUND', 'Wallet not found', HttpStatus.NOT_FOUND);
+  constructor(detail = 'Wallet not found') {
+    super('WALLET_NOT_FOUND', detail, HttpStatus.NOT_FOUND);
   }
 }
 

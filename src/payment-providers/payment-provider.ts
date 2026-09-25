@@ -50,7 +50,64 @@ export type ProviderEventType =
   | 'payment.failed'
   | 'refund.succeeded'
   | 'refund.failed'
+  | 'payout.succeeded'
+  | 'payout.failed'
+  | 'payout.reversed'
   | 'unknown';
+
+// ---- Payouts (money out to a bank account) ------------------------------------
+
+export interface CreatePayoutRecipientInput {
+  currency: string;
+  bankCode: string;
+  accountNumber: string;
+  /** Needed where the provider can't resolve the account holder's name. */
+  accountName?: string;
+}
+
+export interface PayoutRecipient {
+  /** The provider's id for the saved bank account (e.g. a recipient code). */
+  recipientReference: string;
+  /** The verified account holder name, where the provider resolves it. */
+  accountName: string;
+  bankName: string | null;
+}
+
+export interface InitiatePayoutInput {
+  /** Our payout reference; providers must treat it as idempotent. */
+  reference: string;
+  /** Minor units. */
+  amount: bigint;
+  currency: string;
+  recipientReference: string;
+  narration?: string;
+}
+
+/** `reversed`: the provider returned the money after reporting success. */
+export type ProviderPayoutStatus =
+  'pending' | 'successful' | 'failed' | 'reversed';
+
+export interface PayoutResult {
+  providerReference: string;
+  status: ProviderPayoutStatus;
+  failureReason?: string;
+}
+
+/** Optional provider capability: sending money to bank accounts. */
+export interface PayoutCapability {
+  /** ISO currencies the provider can pay out in. */
+  readonly currencies: readonly string[];
+
+  createRecipient(input: CreatePayoutRecipientInput): Promise<PayoutRecipient>;
+
+  initiate(input: InitiatePayoutInput): Promise<PayoutResult>;
+
+  /**
+   * The payout with OUR reference, or null if the provider never received
+   * it. Checked before (re)sending, so a lost response can't pay twice.
+   */
+  find(reference: string): Promise<PayoutResult | null>;
+}
 
 /** A provider webhook normalised into FinStack's vocabulary. */
 export interface ProviderWebhookEvent {
@@ -63,7 +120,7 @@ export interface ProviderWebhookEvent {
    * Payment events: the provider's payment reference. Refund events: a
    * FinStack reference the provider echoes back, either the refund's own
    * (`rfd_...`) or the refunded payment's (`trx_...`), depending on the
-   * provider.
+   * provider. Payout events: our payout reference (`pyt_...`).
    */
   providerReference?: string;
   reference?: string;
@@ -100,6 +157,9 @@ export interface PaymentProvider {
 
   /** Parses an already-verified webhook body. */
   parseWebhookEvent(rawBody: Buffer): ProviderWebhookEvent;
+
+  /** Present when the provider can send payouts. */
+  readonly payouts?: PayoutCapability;
 }
 
 /** Raised by adapters. `retryable` distinguishes outages from rejections. */
@@ -107,6 +167,8 @@ export class PaymentProviderError extends Error {
   constructor(
     message: string,
     readonly retryable: boolean,
+    /** The provider's HTTP status, when it answered. */
+    readonly httpStatus?: number,
   ) {
     super(message);
     this.name = 'PaymentProviderError';

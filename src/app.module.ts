@@ -1,5 +1,6 @@
 import { AuditApiModule } from './audit/audit-api.module';
 import { AuditModule } from './audit/audit.module';
+import { PayoutsModule } from './payouts/payouts.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { HttpModule } from './common/http/http.module';
@@ -37,6 +38,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     TransactionsModule,
     PaymentsModule,
     RefundsModule,
+    PayoutsModule,
     WebhooksModule,
     EventsModule,
     MaintenanceModule,

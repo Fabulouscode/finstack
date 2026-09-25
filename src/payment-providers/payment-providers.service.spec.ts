@@ -5,6 +5,7 @@ import { MockPaymentProvider } from './mock/mock-payment.provider';
 import {
   CurrencyNotSupportedByProviderException,
   PaymentProvidersService,
+  PayoutsNotSupportedException,
   ProviderNotAllowedForCurrencyException,
   UnknownPaymentProviderException,
 } from './payment-providers.service';
@@ -68,5 +69,42 @@ describe('PaymentProvidersService.select', () => {
         currencyRoutes: { JPY: 'paystack' },
       }),
     ).toThrow(ConfigValidationError);
+  });
+});
+
+describe('PaymentProvidersService.selectForPayout', () => {
+  it('prefers the currency route, then the default, then any capable provider', () => {
+    const providers = service({
+      enabledProviders: ['stripe', 'paystack'],
+      defaultProvider: 'stripe',
+      currencyRoutes: {},
+    });
+    // Stripe can't pay out (Connect is out of scope), so Paystack is used.
+    expect(providers.selectForPayout('NGN').name).toBe('paystack');
+  });
+
+  it('rejects a requested provider that cannot pay out in the currency', () => {
+    const providers = service({
+      enabledProviders: ['stripe', 'paystack'],
+      defaultProvider: 'paystack',
+      currencyRoutes: {},
+    });
+    expect(() => providers.selectForPayout('NGN', 'stripe')).toThrow(
+      PayoutsNotSupportedException,
+    );
+    expect(() => providers.selectForPayout('USD', 'paystack')).toThrow(
+      PayoutsNotSupportedException,
+    );
+  });
+
+  it('fails when no enabled provider can pay out in the currency', () => {
+    const providers = service({
+      enabledProviders: ['stripe'],
+      defaultProvider: 'stripe',
+      currencyRoutes: {},
+    });
+    expect(() => providers.selectForPayout('USD')).toThrow(
+      PayoutsNotSupportedException,
+    );
   });
 });

@@ -360,6 +360,26 @@ The Paystack and Stripe adapters are tested against local fakes of each API (`te
 
 See [ADR 0014](./docs/adr/0014-refunds.md).
 
+## Payouts
+
+Withdraw from a wallet to a bank account. Users use `/v1/...`; organizations use `/v1/organizations/:id/...`, where saving destinations needs `payout_destinations:manage` and sending payouts needs `payouts:create` (which can be given to API keys).
+
+| Endpoint | Description |
+| --- | --- |
+| `POST` / `GET /v1/payout-destinations` | Save a bank account (verified by the provider; only the last 4 digits are stored) or list them |
+| `DELETE /v1/payout-destinations/:id` | Remove one |
+| `POST /v1/payouts` | Withdraw (Idempotency-Key). Holds the funds, sends them, and settles by webhook |
+| `GET /v1/payouts/:id` | Status: `processing`, then `successful`, `failed` (hold released) or `reversed` (credited back) |
+| `POST /v1/admin/payouts/:id/sync` | Admin: re-check a payout with the provider |
+
+```bash
+curl -X POST localhost:3000/v1/payouts -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: withdraw-1" -H "Content-Type: application/json" \
+  -d '{"destinationId": "<id>", "amount": 500000}'
+```
+
+A payout is **never sent twice**. The provider is always asked about our reference before anything is sent again, and payouts stuck in `processing` are re-checked every few minutes. Payouts work with the mock and **Paystack Transfers** (NGN, GHS, ZAR). Stripe payouts would need Stripe Connect and aren't included. See [ADR 0018](./docs/adr/0018-payouts.md).
+
 ## Events and background jobs
 
 Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
@@ -448,7 +468,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs): payouts, settlement holds, reconciliation, admin, notifications, observability
+- [ ] **Phase 3 — Operations** (done: audit logs, payouts): settlement holds, reconciliation, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

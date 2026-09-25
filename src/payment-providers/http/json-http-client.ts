@@ -74,6 +74,7 @@ export class JsonHttpClient {
       throw new PaymentProviderError(
         `HTTP ${response.status}: ${providerMessage(body)}`,
         retryable,
+        response.status,
       );
     }
     return { status: response.status, body: body as T };

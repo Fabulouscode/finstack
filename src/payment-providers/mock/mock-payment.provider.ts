@@ -5,11 +5,17 @@ import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import { paymentsConfig } from '../../config/payments.config';
 import type { PaymentsConfig } from '../../config/payments.config';
 import {
+  CreatePayoutRecipientInput,
   InitializePaymentInput,
   InitializePaymentResult,
   PaymentProvider,
   PaymentProviderError,
+  PayoutCapability,
+  PayoutRecipient,
+  PayoutResult,
+  InitiatePayoutInput,
   ProviderPaymentStatus,
+  ProviderPayoutStatus,
   ProviderWebhookEvent,
   RefundPaymentInput,
   RefundPaymentResult,
@@ -30,7 +36,13 @@ interface MockPayment {
 export interface MockWebhookBody {
   id: string;
   event:
-    'charge.success' | 'charge.failed' | 'refund.processed' | 'refund.failed';
+    | 'charge.success'
+    | 'charge.failed'
+    | 'refund.processed'
+    | 'refund.failed'
+    | 'transfer.success'
+    | 'transfer.failed'
+    | 'transfer.reversed';
   data: {
     reference: string;
     provider_reference?: string;
@@ -42,6 +54,23 @@ export interface MockWebhookBody {
 /** How the next mock refund behaves (tests and local development). */
 export type MockRefundBehaviour =
   'successful' | 'pending' | 'rejected' | 'unavailable';
+
+/**
+ * How the next mock payouts behave. `lost`: the provider accepts the payout
+ * but the response never arrives (a timeout), to exercise safe retries.
+ */
+export type MockPayoutBehaviour =
+  'successful' | 'pending' | 'rejected' | 'unavailable' | 'lost';
+
+/** Bank account number the mock treats as nonexistent. */
+export const MOCK_INVALID_ACCOUNT_NUMBER = '0000000000';
+
+interface MockPayout {
+  reference: string;
+  providerReference: string;
+  amount: bigint;
+  status: ProviderPayoutStatus;
+}
 
 interface MockRefund {
   providerRefundReference: string;
@@ -62,6 +91,20 @@ export class MockPaymentProvider implements PaymentProvider {
   private readonly payments = new Map<string, MockPayment>();
   private readonly refunds = new Map<string, MockRefund>();
   private refundBehaviour: MockRefundBehaviour = 'successful';
+  private readonly payoutsByReference = new Map<string, MockPayout>();
+  private payoutBehaviour: MockPayoutBehaviour = 'successful';
+  /** Every payout the mock was asked to send, for asserting "sent once". */
+  readonly initiatedPayouts: string[] = [];
+
+  readonly payouts: PayoutCapability = {
+    currencies: SUPPORTED_CURRENCIES,
+    createRecipient: (input) => this.createRecipient(input),
+    initiate: (input) => this.initiatePayout(input),
+    find: (reference) =>
+      Promise.resolve(
+        this.payoutResult(this.payoutsByReference.get(reference)),
+      ),
+  };
 
   constructor(
     @Inject(paymentsConfig.KEY)
@@ -173,9 +216,13 @@ export class MockPaymentProvider implements PaymentProvider {
       'charge.failed': 'payment.failed',
       'refund.processed': 'refund.succeeded',
       'refund.failed': 'refund.failed',
+      'transfer.success': 'payout.succeeded',
+      'transfer.failed': 'payout.failed',
+      'transfer.reversed': 'payout.reversed',
     };
     const type = types[String(body.event)] ?? 'unknown';
-    const isRefund = type === 'refund.succeeded' || type === 'refund.failed';
+    // Refund and payout webhooks echo our own reference.
+    const isRefund = type.startsWith('refund.') || type.startsWith('payout.');
 
     return {
       eventId: String(body.id),
@@ -241,6 +288,102 @@ export class MockPaymentProvider implements PaymentProvider {
     };
     const rawBody = Buffer.from(JSON.stringify(body));
     return { rawBody, signature: this.sign(rawBody) };
+  }
+
+  /** Makes the next payouts succeed, stay pending, fail or time out. */
+  setPayoutBehaviour(behaviour: MockPayoutBehaviour): void {
+    this.payoutBehaviour = behaviour;
+  }
+
+  /** Settles (or reverses) a mock payout and returns the signed webhook. */
+  simulatePayoutOutcome(
+    reference: string,
+    outcome: 'successful' | 'failed' | 'reversed',
+  ): { rawBody: Buffer; signature: string } {
+    const payout = this.payoutsByReference.get(reference);
+    if (!payout) {
+      throw new PaymentProviderError('Unknown mock payout', false);
+    }
+    payout.status = outcome;
+    const events = {
+      successful: 'transfer.success',
+      failed: 'transfer.failed',
+      reversed: 'transfer.reversed',
+    } as const;
+    const body: MockWebhookBody = {
+      id: `evt_${randomBytes(8).toString('hex')}`,
+      event: events[outcome],
+      data: { reference, provider_reference: payout.providerReference },
+    };
+    const rawBody = Buffer.from(JSON.stringify(body));
+    return { rawBody, signature: this.sign(rawBody) };
+  }
+
+  private createRecipient(
+    input: CreatePayoutRecipientInput,
+  ): Promise<PayoutRecipient> {
+    if (input.accountNumber === MOCK_INVALID_ACCOUNT_NUMBER) {
+      return Promise.reject(
+        new PaymentProviderError('Could not resolve account (mock)', false),
+      );
+    }
+    // Deterministic, like providers that return the existing recipient.
+    const id = createHmac('sha256', 'mock-recipient')
+      .update(`${input.currency}:${input.bankCode}:${input.accountNumber}`)
+      .digest('hex')
+      .slice(0, 16);
+    return Promise.resolve({
+      recipientReference: `RCP_mock_${id}`,
+      accountName: input.accountName ?? 'Mock Account Holder',
+      bankName: `Mock Bank ${input.bankCode}`,
+    });
+  }
+
+  private initiatePayout(input: InitiatePayoutInput): Promise<PayoutResult> {
+    if (this.payoutBehaviour === 'rejected') {
+      return Promise.reject(
+        new PaymentProviderError('Insufficient provider balance (mock)', false),
+      );
+    }
+    if (this.payoutBehaviour === 'unavailable') {
+      return Promise.reject(
+        new PaymentProviderError('Mock provider timed out', true),
+      );
+    }
+    const existing = this.payoutsByReference.get(input.reference);
+    if (existing) {
+      // Real providers refuse a reused reference.
+      return Promise.reject(
+        new PaymentProviderError('Duplicate transfer reference (mock)', false),
+      );
+    }
+    const payout: MockPayout = {
+      reference: input.reference,
+      providerReference: `TRF_mock_${randomBytes(6).toString('hex')}`,
+      amount: input.amount,
+      status: this.payoutBehaviour === 'pending' ? 'pending' : 'successful',
+    };
+    this.payoutsByReference.set(input.reference, payout);
+    this.initiatedPayouts.push(input.reference);
+
+    if (this.payoutBehaviour === 'lost') {
+      payout.status = 'successful';
+      return Promise.reject(
+        new PaymentProviderError('Mock provider timed out', true),
+      );
+    }
+    return Promise.resolve(this.payoutResult(payout) as PayoutResult);
+  }
+
+  private payoutResult(payout: MockPayout | undefined): PayoutResult | null {
+    if (!payout) return null;
+    return {
+      providerReference: payout.providerReference,
+      status: payout.status,
+      ...(payout.status === 'failed'
+        ? { failureReason: 'Transfer failed (mock)' }
+        : {}),
+    };
   }
 
   sign(rawBody: Buffer): string {

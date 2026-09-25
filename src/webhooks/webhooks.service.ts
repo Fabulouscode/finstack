@@ -11,6 +11,7 @@ import { OutboxService } from '../outbox/outbox.service';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { PaymentSettlementService } from '../payments/payment-settlement.service';
 import { PaymentsService } from '../payments/payments.service';
+import { PayoutsService } from '../payouts/payouts.service';
 import { RefundsService } from '../refunds/refunds.service';
 import { WebhookEvent, WebhookEventStatus } from './webhook-event.entity';
 
@@ -73,6 +74,7 @@ export class WebhooksService {
     private readonly payments: PaymentsService,
     private readonly settlement: PaymentSettlementService,
     private readonly refunds: RefundsService,
+    private readonly payouts: PayoutsService,
     private readonly audit: AuditService,
   ) {}
 
@@ -179,6 +181,24 @@ export class WebhooksService {
           status,
           attempts,
           synced > 0 ? 'refunds_synced' : 'no_matching_refund',
+        );
+        return status;
+      }
+
+      if (event.type.startsWith('payout.') && event.providerReference) {
+        // Re-checked with the provider; the payload only says which payout.
+        const found = await this.payouts.syncFromWebhook(
+          event.provider,
+          event.providerReference,
+        );
+        const status = found
+          ? WebhookEventStatus.Processed
+          : WebhookEventStatus.Ignored;
+        await this.finish(
+          event.id,
+          status,
+          attempts,
+          found ? 'payout_synced' : 'no_matching_payout',
         );
         return status;
       }

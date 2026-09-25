@@ -5,11 +5,17 @@ import { paymentsConfig } from '../../config/payments.config';
 import type { PaymentsConfig } from '../../config/payments.config';
 import { JsonHttpClient } from '../http/json-http-client';
 import {
+  CreatePayoutRecipientInput,
   InitializePaymentInput,
+  InitiatePayoutInput,
   InitializePaymentResult,
   PaymentProvider,
   PaymentProviderError,
+  PayoutCapability,
+  PayoutRecipient,
+  PayoutResult,
   ProviderPaymentStatus,
+  ProviderPayoutStatus,
   ProviderWebhookEvent,
   RefundPaymentInput,
   RefundPaymentResult,
@@ -45,6 +51,38 @@ interface PaystackWebhookBody {
   };
 }
 
+interface PaystackTransfer {
+  transfer_code: string;
+  reference: string;
+  status: string;
+  reason?: string;
+}
+
+/** Paystack recipient type per payout currency (bank accounts). */
+const RECIPIENT_TYPES: Readonly<Record<string, string>> = {
+  NGN: 'nuban',
+  GHS: 'ghipss',
+  ZAR: 'basa',
+};
+
+function mapTransferStatus(status: string): ProviderPayoutStatus {
+  switch (status) {
+    case 'success':
+      return 'successful';
+    case 'failed':
+    case 'abandoned':
+    case 'rejected':
+      return 'failed';
+    case 'reversed':
+      return 'reversed';
+    default:
+      // pending, processing, received, queued, otp: not final yet. (Turn off
+      // OTP for API transfers in the Paystack dashboard, or payouts will wait
+      // for a code no one enters.)
+      return 'pending';
+  }
+}
+
 function mapRefundStatus(status: string): ProviderPaymentStatus {
   if (status === 'processed') return 'successful';
   if (status === 'failed') return 'failed';
@@ -63,6 +101,14 @@ function mapRefundStatus(status: string): ProviderPaymentStatus {
 export class PaystackProvider implements PaymentProvider {
   readonly name = 'paystack';
   readonly supportedCurrencies = ['NGN', 'USD', 'GHS', 'ZAR', 'KES'] as const;
+
+  /** Paystack Transfers (https://paystack.com/docs/transfers). */
+  readonly payouts: PayoutCapability = {
+    currencies: Object.keys(RECIPIENT_TYPES),
+    createRecipient: (input) => this.createRecipient(input),
+    initiate: (input) => this.initiateTransfer(input),
+    find: (reference) => this.findTransfer(reference),
+  };
 
   constructor(
     @Inject(paymentsConfig.KEY) private readonly config: PaymentsConfig,
@@ -166,6 +212,9 @@ export class PaystackProvider implements PaymentProvider {
       'charge.failed': 'payment.failed',
       'refund.processed': 'refund.succeeded',
       'refund.failed': 'refund.failed',
+      'transfer.success': 'payout.succeeded',
+      'transfer.failed': 'payout.failed',
+      'transfer.reversed': 'payout.reversed',
     };
     const type = types[event] ?? 'unknown';
 
@@ -192,6 +241,99 @@ export class PaystackProvider implements PaymentProvider {
       providerType: event,
       providerReference: body.data?.reference,
       reference: body.data?.reference,
+    };
+  }
+
+  /**
+   * Nigerian accounts are resolved first, so the stored name is the bank's,
+   * not whatever was typed in. Elsewhere the caller supplies the name.
+   */
+  private async createRecipient(
+    input: CreatePayoutRecipientInput,
+  ): Promise<PayoutRecipient> {
+    const type = RECIPIENT_TYPES[input.currency];
+    if (!type) {
+      throw new PaymentProviderError(
+        `Paystack cannot pay out in ${input.currency}`,
+        false,
+      );
+    }
+
+    let name = input.accountName;
+    if (input.currency === 'NGN') {
+      const query = new URLSearchParams({
+        account_number: input.accountNumber,
+        bank_code: input.bankCode,
+      });
+      const { body } = await this.call<{ account_name: string }>(
+        'GET',
+        `/bank/resolve?${query.toString()}`,
+      );
+      name = body.data.account_name;
+    }
+    if (!name) {
+      throw new PaymentProviderError(
+        'accountName is required for this currency',
+        false,
+      );
+    }
+
+    const { body } = await this.call<{
+      recipient_code: string;
+      name: string;
+      details?: { bank_name?: string | null };
+    }>('POST', '/transferrecipient', {
+      type,
+      name,
+      account_number: input.accountNumber,
+      bank_code: input.bankCode,
+      currency: input.currency,
+    });
+    return {
+      recipientReference: body.data.recipient_code,
+      accountName: body.data.name,
+      bankName: body.data.details?.bank_name ?? null,
+    };
+  }
+
+  /** Our payout reference is Paystack's transfer `reference` (idempotent). */
+  private async initiateTransfer(
+    input: InitiatePayoutInput,
+  ): Promise<PayoutResult> {
+    const { body } = await this.call<PaystackTransfer>('POST', '/transfer', {
+      source: 'balance',
+      amount: input.amount.toString(),
+      currency: input.currency,
+      recipient: input.recipientReference,
+      reference: input.reference,
+      ...(input.narration ? { reason: input.narration } : {}),
+    });
+    return this.transferResult(body.data);
+  }
+
+  private async findTransfer(reference: string): Promise<PayoutResult | null> {
+    try {
+      const { body } = await this.call<PaystackTransfer>(
+        'GET',
+        `/transfer/verify/${encodeURIComponent(reference)}`,
+      );
+      return this.transferResult(body.data);
+    } catch (error) {
+      if (error instanceof PaymentProviderError && error.httpStatus === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private transferResult(transfer: PaystackTransfer): PayoutResult {
+    const status = mapTransferStatus(transfer.status);
+    return {
+      providerReference: transfer.transfer_code,
+      status,
+      ...(status === 'failed' && transfer.reason
+        ? { failureReason: transfer.reason }
+        : {}),
     };
   }
 

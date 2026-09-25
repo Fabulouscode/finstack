@@ -254,3 +254,134 @@ describe('PaystackProvider', () => {
     });
   });
 });
+
+describe('PaystackProvider payouts', () => {
+  /** Answers each call in order. */
+  function providerAnswering(
+    ...responses: { status: number; body: object }[]
+  ): { provider: PaystackProvider; calls: Captured[] } {
+    const calls: Captured[] = [];
+    const fetchFn = ((url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      const next = responses.shift() ?? { status: 500, body: {} };
+      return Promise.resolve(
+        new Response(JSON.stringify(next.body), { status: next.status }),
+      );
+    }) as unknown as FetchFn;
+    return {
+      provider: new PaystackProvider(config, new JsonHttpClient(fetchFn)),
+      calls,
+    };
+  }
+
+  const ok = (data: object): { status: number; body: object } => ({
+    status: 200,
+    body: { status: true, message: 'ok', data },
+  });
+
+  it('resolves Nigerian accounts and saves the verified name', async () => {
+    const { provider, calls } = providerAnswering(
+      ok({ account_name: 'ADA LOVELACE', account_number: '0123456789' }),
+      ok({
+        recipient_code: 'RCP_abc',
+        name: 'ADA LOVELACE',
+        details: { bank_name: 'Guaranty Trust Bank' },
+      }),
+    );
+
+    const recipient = await provider.payouts.createRecipient({
+      currency: 'NGN',
+      bankCode: '058',
+      accountNumber: '0123456789',
+      accountName: 'Someone Else',
+    });
+
+    expect(recipient).toEqual({
+      recipientReference: 'RCP_abc',
+      accountName: 'ADA LOVELACE',
+      bankName: 'Guaranty Trust Bank',
+    });
+    expect(calls[0]?.url).toBe(
+      'https://api.paystack.test/bank/resolve?account_number=0123456789&bank_code=058',
+    );
+    expect(JSON.parse(calls[1]?.init.body as string)).toEqual({
+      type: 'nuban',
+      name: 'ADA LOVELACE',
+      account_number: '0123456789',
+      bank_code: '058',
+      currency: 'NGN',
+    });
+  });
+
+  it('sends transfers with our reference and maps their status', async () => {
+    const { provider, calls } = providerAnswering(
+      ok({ transfer_code: 'TRF_1', reference: 'pyt_1', status: 'otp' }),
+    );
+
+    const result = await provider.payouts.initiate({
+      reference: 'pyt_1',
+      amount: 500000n,
+      currency: 'NGN',
+      recipientReference: 'RCP_abc',
+      narration: 'Withdrawal',
+    });
+
+    expect(result).toEqual({ providerReference: 'TRF_1', status: 'pending' });
+    expect(JSON.parse(calls[0]?.init.body as string)).toEqual({
+      source: 'balance',
+      amount: '500000',
+      currency: 'NGN',
+      recipient: 'RCP_abc',
+      reference: 'pyt_1',
+      reason: 'Withdrawal',
+    });
+  });
+
+  it.each([
+    ['success', 'successful'],
+    ['failed', 'failed'],
+    ['reversed', 'reversed'],
+    ['processing', 'pending'],
+  ])('looks transfers up by reference (%s -> %s)', async (status, mapped) => {
+    const { provider, calls } = providerAnswering(
+      ok({ transfer_code: 'TRF_1', reference: 'pyt_1', status }),
+    );
+    await expect(provider.payouts.find('pyt_1')).resolves.toMatchObject({
+      status: mapped,
+    });
+    expect(calls[0]?.url).toBe(
+      'https://api.paystack.test/transfer/verify/pyt_1',
+    );
+  });
+
+  it('reports a transfer Paystack never received as not found', async () => {
+    const { provider } = providerAnswering({
+      status: 404,
+      body: { status: false, message: 'Transfer not found' },
+    });
+    await expect(provider.payouts.find('pyt_1')).resolves.toBeNull();
+  });
+
+  it('does not treat other errors as "not found"', async () => {
+    const { provider } = providerAnswering({ status: 503, body: {} });
+    await expect(provider.payouts.find('pyt_1')).rejects.toMatchObject({
+      retryable: true,
+    });
+  });
+
+  it('maps transfer webhooks to payout events carrying our reference', () => {
+    const { provider } = providerAnswering();
+    const event = provider.parseWebhookEvent(
+      Buffer.from(
+        JSON.stringify({
+          event: 'transfer.reversed',
+          data: { id: 77, reference: 'pyt_1', transfer_code: 'TRF_1' },
+        }),
+      ),
+    );
+    expect(event).toMatchObject({
+      type: 'payout.reversed',
+      providerReference: 'pyt_1',
+    });
+  });
+});

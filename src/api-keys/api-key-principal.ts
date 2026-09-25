@@ -29,4 +29,5 @@ export const API_KEY_SCOPES = [
   OrgPermission.ManageWallets,
   OrgPermission.CreatePayments,
   OrgPermission.ReadTransactions,
+  OrgPermission.CreatePayouts,
 ] as const;

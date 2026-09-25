@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OutboxModule } from '../outbox/outbox.module';
 import { PaymentProvidersModule } from '../payment-providers/payment-providers.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { PayoutsModule } from '../payouts/payouts.module';
 import { QueuesModule } from '../queues/queues.module';
 import { RefundsModule } from '../refunds/refunds.module';
 import { AdminWebhooksController } from './admin-webhooks.controller';
@@ -20,6 +21,7 @@ import { WebhooksService } from './webhooks.service';
     OutboxModule,
     QueuesModule,
     RefundsModule,
+    PayoutsModule,
   ],
   controllers: [
     WebhooksController,
