@@ -6,9 +6,17 @@ import { Wallet } from './wallet.entity';
 import { WalletsController } from './wallets.controller';
 import { WalletsService } from './wallets.service';
 
+import { OrganizationWalletsController } from './organization-wallets.controller';
+import { OrganizationsModule } from '../organizations/organizations.module';
+
 @Module({
-  imports: [TypeOrmModule.forFeature([Wallet]), LedgerModule, FxModule],
-  controllers: [WalletsController],
+  imports: [
+    OrganizationsModule,
+    TypeOrmModule.forFeature([Wallet]),
+    LedgerModule,
+    FxModule,
+  ],
+  controllers: [WalletsController, OrganizationWalletsController],
   providers: [WalletsService],
   exports: [WalletsService],
 })

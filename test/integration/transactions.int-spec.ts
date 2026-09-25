@@ -44,7 +44,7 @@ describe('Transactions (integration)', () => {
     ).id;
 
   const available = async (userId: string, walletId: string): Promise<bigint> =>
-    (await wallets.getForUser(userId, walletId)).balances.available;
+    (await wallets.getOwned(userId, walletId)).balances.available;
 
   beforeAll(async () => {
     moduleRef = await createTestModule([TransactionsModule]);

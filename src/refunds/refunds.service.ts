@@ -198,6 +198,7 @@ export class RefundsService {
       type: TransactionType.Refund,
       status: TransactionStatus.Processing,
       userId: payment.userId,
+      organizationId: payment.organizationId,
       sourceWalletId: wallet.id,
       amount: reversal.walletDebit,
       currency: wallet.currency,
@@ -453,6 +454,7 @@ export class RefundsService {
           reference: refund.reference,
           paymentId: refund.paymentId,
           userId: transaction.userId,
+          organizationId: transaction.organizationId,
           refunded: {
             amount: refund.amount.toString(),
             currency: refund.currency,
@@ -504,6 +506,7 @@ export class RefundsService {
           reference: refund.reference,
           paymentId: refund.paymentId,
           userId: transaction.userId,
+          organizationId: transaction.organizationId,
           failureCode,
         },
       });

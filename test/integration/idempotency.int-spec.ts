@@ -1,5 +1,6 @@
 import { TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
+import { userOwner } from '../../src/common/owner/owner';
 import { IdempotencyKey } from '../../src/idempotency/idempotency-key.entity';
 import {
   IdempotencyKeyReusedException,
@@ -10,6 +11,7 @@ import {
   IdempotencyService,
   RequestFingerprint,
 } from '../../src/idempotency/idempotency.service';
+import { OrganizationsModule } from '../../src/organizations/organizations.module';
 import { UsersModule } from '../../src/users/users.module';
 import { UsersService } from '../../src/users/users.service';
 import { createTestModule } from '../utils/create-test-module';
@@ -22,7 +24,11 @@ describe('IdempotencyService (integration)', () => {
   let request: RequestFingerprint;
 
   beforeAll(async () => {
-    moduleRef = await createTestModule([UsersModule, IdempotencyModule]);
+    moduleRef = await createTestModule([
+      UsersModule,
+      OrganizationsModule,
+      IdempotencyModule,
+    ]);
     service = moduleRef.get(IdempotencyService);
     dataSource = moduleRef.get(DataSource);
   });
@@ -36,7 +42,7 @@ describe('IdempotencyService (integration)', () => {
       lastName: 'L',
     });
     request = {
-      userId: user.id,
+      owner: userOwner(user.id),
       key: 'key-1',
       method: 'POST',
       path: '/v1/transfers',
@@ -146,7 +152,7 @@ describe('IdempotencyService (integration)', () => {
     });
 
     await expect(
-      service.begin({ ...request, userId: other.id }),
+      service.begin({ ...request, owner: userOwner(other.id) }),
     ).resolves.toMatchObject({
       kind: 'execute',
     });

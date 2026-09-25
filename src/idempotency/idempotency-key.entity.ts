@@ -8,6 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { Organization } from '../organizations/organization.entity';
 import { User } from '../users/user.entity';
 
 export enum IdempotencyKeyStatus {
@@ -16,11 +17,24 @@ export enum IdempotencyKeyStatus {
 }
 
 /**
- * One row per (user, Idempotency-Key). Stores a fingerprint of the request
+ * One row per (owner, Idempotency-Key), where the owner is the user, or the
+ * organization on organization routes (so its members and API keys share
+ * one key space). Stores a fingerprint of the request
  * and, once finished, the response to replay for retries.
  */
 @Entity({ name: 'idempotency_keys' })
-@Index('uq_idempotency_keys_user_key', ['userId', 'key'], { unique: true })
+@Index('uq_idempotency_keys_user_key', ['userId', 'key'], {
+  unique: true,
+  where: '"user_id" IS NOT NULL',
+})
+@Index('uq_idempotency_keys_org_key', ['organizationId', 'key'], {
+  unique: true,
+  where: '"organization_id" IS NOT NULL',
+})
+@Check(
+  'chk_idempotency_keys_owner',
+  `num_nonnulls("user_id", "organization_id") = 1`,
+)
 @Index('idx_idempotency_keys_expires_at', ['expiresAt'])
 @Check('chk_idempotency_keys_status', `"status" IN ('processing', 'completed')`)
 @Check(
@@ -33,8 +47,8 @@ export class IdempotencyKey {
   })
   id: string;
 
-  @Column({ type: 'uuid' })
-  userId: string;
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({
@@ -42,6 +56,16 @@ export class IdempotencyKey {
     foreignKeyConstraintName: 'fk_idempotency_keys_user',
   })
   user?: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  organizationId: string | null;
+
+  @ManyToOne(() => Organization, { onDelete: 'CASCADE' })
+  @JoinColumn({
+    name: 'organization_id',
+    foreignKeyConstraintName: 'fk_idempotency_keys_organization',
+  })
+  organization?: Organization;
 
   @Column({ type: 'varchar', length: 255 })
   key: string;

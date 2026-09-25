@@ -76,7 +76,7 @@ export class WalletsController {
   async list(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WalletResponseDto[]> {
-    return (await this.wallets.listForUser(user.id)).map((wallet) =>
+    return (await this.wallets.listFor(user.id)).map((wallet) =>
       WalletResponseDto.from(wallet),
     );
   }
@@ -104,7 +104,7 @@ export class WalletsController {
     @Param('walletId', ParseUUIDPipe) walletId: string,
   ): Promise<WalletResponseDto> {
     return WalletResponseDto.from(
-      await this.wallets.getForUser(user.id, walletId),
+      await this.wallets.getOwned(user.id, walletId),
     );
   }
 
@@ -145,7 +145,7 @@ export class WalletsController {
     @Param('walletId', ParseUUIDPipe) walletId: string,
     @Query() query: ListWalletEntriesQueryDto,
   ): Promise<WalletEntriesPageDto> {
-    const page = await this.wallets.listEntriesForUser(user.id, walletId, {
+    const page = await this.wallets.listEntries(user.id, walletId, {
       limit: query.limit,
       before: query.cursor ? decodeCursor(query.cursor) : undefined,
     });

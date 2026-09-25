@@ -205,6 +205,28 @@ curl localhost:3000/v1/organizations/<id> -H "X-API-Key: fsk_test_..."
 
 API keys are accepted **only on endpoints marked for them**. They're stored as hashes, bound to one organization, limited to their scopes, and can be revoked or set to expire. Non-members get `404` for an organization, so ids can't be probed. See [ADR 0015](./docs/adr/0015-organizations-and-api-keys.md).
 
+### Organization wallets and payments
+
+Organizations own money just as users do. Each wallet, payment and transaction belongs to exactly one user or one organization, and the database enforces this with a CHECK constraint. Organization wallets follow the same rules: `WALLETS_PER_OWNER`, the allowed currencies, a primary wallet, and FX conversion.
+
+| Endpoint | Permission | Description |
+| --- | --- | --- |
+| `POST` / `GET /v1/organizations/:id/wallets` | `wallets:manage` / `wallets:read` | Open or list the organization's wallets |
+| `GET /v1/organizations/:id/wallets/:walletId[/entries]` | `wallets:read` | Balances and ledger entries |
+| `POST /v1/organizations/:id/wallets/:walletId/primary` | `wallets:manage` | Change the primary wallet |
+| `POST /v1/organizations/:id/payments` | `payments:create` | Collect from a customer (`customerEmail` required, Idempotency-Key) |
+| `GET /v1/organizations/:id/payments/:paymentId` · `POST …/verify` | `transactions:read` · `payments:create` | Read or verify a payment |
+| `GET /v1/organizations/:id/transactions[/:transactionId]` | `transactions:read` | Payments in, refunds out |
+
+All of these accept API keys with the matching scope. On organization routes, the Idempotency-Key is shared by the organization's members and API keys, so a retry from any of them replays the original. See [ADR 0016](./docs/adr/0016-organization-ownership.md).
+
+```bash
+curl -X POST localhost:3000/v1/organizations/<id>/payments \
+  -H "X-API-Key: fsk_test_..." -H "Idempotency-Key: order-1042" \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 250000, "currency": "NGN", "customerEmail": "customer@example.com"}'
+```
+
 ## Wallets and ledger
 
 Every amount is an **integer in minor units** (cents, kobo) plus an ISO 4217 currency: `15000` USD is $150.00. Supported currencies are listed in `src/common/money/currency.ts`.
@@ -408,6 +430,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] FX: admin-set rates, locked quotes, two-leg conversion with spread
   - [x] Transactions (state machine), idempotency keys, transfers
   - [x] Organizations, role-based permissions, API keys
+  - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [ ] **Phase 3 — Operations:** reconciliation, audit logs, admin, notifications, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox

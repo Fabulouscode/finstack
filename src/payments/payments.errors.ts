@@ -17,3 +17,14 @@ export class PaymentProviderUnavailableException extends AppException {
     );
   }
 }
+
+/** Organization payments are collections from customers, so the payer must be named. */
+export class CustomerEmailRequiredException extends AppException {
+  constructor() {
+    super(
+      'CUSTOMER_EMAIL_REQUIRED',
+      'customerEmail is required for organization payments',
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}

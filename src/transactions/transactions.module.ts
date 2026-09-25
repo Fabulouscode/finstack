@@ -9,15 +9,19 @@ import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
 import { TransfersService } from './transfers.service';
 
+import { OrganizationTransactionsController } from './organization-transactions.controller';
+import { OrganizationsModule } from '../organizations/organizations.module';
+
 @Module({
   imports: [
+    OrganizationsModule,
     TypeOrmModule.forFeature([Transaction]),
     IdempotencyModule,
     OutboxModule,
     UsersModule,
     WalletsModule,
   ],
-  controllers: [TransactionsController],
+  controllers: [TransactionsController, OrganizationTransactionsController],
   providers: [TransactionsService, TransfersService],
   exports: [TransactionsService],
 })

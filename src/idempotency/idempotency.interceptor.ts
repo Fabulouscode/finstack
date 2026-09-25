@@ -17,7 +17,8 @@ import {
   switchMap,
   throwError,
 } from 'rxjs';
-import { AuthenticatedRequest } from '../auth/authenticated-user';
+import { Owner, organizationOwner, userOwner } from '../common/owner/owner';
+import type { OrganizationRequest } from '../organizations/guards/organization-access';
 import { IdempotencyKeyRequiredException } from './idempotency.errors';
 import { IdempotencyService } from './idempotency.service';
 import { isValidIdempotencyKey, requestHash } from './request-fingerprint';
@@ -39,16 +40,22 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const http = context.switchToHttp();
-    const request = http.getRequest<AuthenticatedRequest>();
+    const request = http.getRequest<OrganizationRequest>();
     const response = http.getResponse<Response>();
 
     const key = request.header(IDEMPOTENCY_KEY_HEADER);
     if (!isValidIdempotencyKey(key)) {
       return throwError(() => new IdempotencyKeyRequiredException());
     }
-    const user = request.user;
-    if (!user) {
-      // Idempotency keys are scoped per user; @Idempotent() needs an authenticated route.
+    // Keys are scoped to the organization on organization routes (so members
+    // and API keys share one key space), otherwise to the user.
+    const access = request.organizationAccess;
+    const owner: Owner | null = access
+      ? organizationOwner(access.organizationId)
+      : request.user
+        ? userOwner(request.user.id)
+        : null;
+    if (!owner) {
       return throwError(
         () => new Error('@Idempotent() requires an authenticated route'),
       );
@@ -59,7 +66,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     return from(
       this.idempotency.begin({
-        userId: user.id,
+        owner,
         key,
         method: request.method,
         path,

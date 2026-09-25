@@ -183,6 +183,7 @@ export class PaymentSettlementService {
           reference: transaction.reference,
           paymentId: payment.id,
           userId: payment.userId,
+          organizationId: payment.organizationId,
           walletId: payment.walletId,
           charged: {
             amount: payment.amount.toString(),
@@ -270,6 +271,7 @@ export class PaymentSettlementService {
           reference: transaction.reference,
           paymentId: payment.id,
           userId: payment.userId,
+          organizationId: payment.organizationId,
           failureCode,
         },
       });

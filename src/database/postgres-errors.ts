@@ -19,13 +19,16 @@ interface PostgresDriverError {
  */
 export function isUniqueViolation(
   error: unknown,
-  constraint?: string,
+  constraint?: string | readonly string[],
 ): boolean {
   if (!(error instanceof QueryFailedError)) return false;
   const driverError = error.driverError as PostgresDriverError;
 
   return (
     driverError.code === PostgresErrorCode.UniqueViolation &&
-    (constraint === undefined || driverError.constraint === constraint)
+    (constraint === undefined ||
+      (typeof constraint === 'string'
+        ? driverError.constraint === constraint
+        : constraint.includes(driverError.constraint ?? '')))
   );
 }

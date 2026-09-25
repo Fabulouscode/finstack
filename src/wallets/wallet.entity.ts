@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { LedgerAccount } from '../ledger/ledger-account.entity';
 import { sqlList } from '../ledger/ledger.types';
+import { Organization } from '../organizations/organization.entity';
 import { User } from '../users/user.entity';
 
 export enum WalletStatus {
@@ -34,13 +35,27 @@ export enum WalletStatus {
   'chk_wallets_status',
   `"status" IN (${sqlList(Object.values(WalletStatus))})`,
 )
-// At most one wallet per currency; also serves "my wallets" lookups.
-@Index('uq_wallets_user_currency', ['userId', 'currency'], { unique: true })
-// At most one primary wallet per user. In `single` mode every wallet is
-// created primary, so this index alone guarantees one wallet per user.
+// A wallet belongs to exactly one owner: a user or an organization.
+@Check('chk_wallets_owner', `num_nonnulls("user_id", "organization_id") = 1`)
+// At most one wallet per currency per owner; also serves "my wallets"
+// lookups. Partial, because the other owner column is null.
+@Index('uq_wallets_user_currency', ['userId', 'currency'], {
+  unique: true,
+  where: '"user_id" IS NOT NULL',
+})
+@Index('uq_wallets_org_currency', ['organizationId', 'currency'], {
+  unique: true,
+  where: '"organization_id" IS NOT NULL',
+})
+// At most one primary wallet per owner. In `single` mode every wallet is
+// created primary, so this index alone guarantees one wallet per owner.
 @Index('uq_wallets_user_primary', ['userId'], {
   unique: true,
   where: '"is_primary"',
+})
+@Index('uq_wallets_org_primary', ['organizationId'], {
+  unique: true,
+  where: '"is_primary" AND "organization_id" IS NOT NULL',
 })
 @Index('uq_wallets_available_account_id', ['availableAccountId'], {
   unique: true,
@@ -53,12 +68,22 @@ export class Wallet {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'pk_wallets' })
   id: string;
 
-  @Column({ type: 'uuid' })
-  userId: string;
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'fk_wallets_user' })
   user?: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  organizationId: string | null;
+
+  @ManyToOne(() => Organization, { onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'organization_id',
+    foreignKeyConstraintName: 'fk_wallets_organization',
+  })
+  organization?: Organization;
 
   @Column({ type: 'char', length: 3 })
   currency: string;

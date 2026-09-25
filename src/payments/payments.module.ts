@@ -13,8 +13,12 @@ import { PaymentSettlementService } from './payment-settlement.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
+import { OrganizationPaymentsController } from './organization-payments.controller';
+import { OrganizationsModule } from '../organizations/organizations.module';
+
 @Module({
   imports: [
+    OrganizationsModule,
     TypeOrmModule.forFeature([Payment, Transaction]),
     IdempotencyModule,
     OutboxModule,
@@ -24,7 +28,7 @@ import { PaymentsService } from './payments.service';
     FxModule,
     UsersModule,
   ],
-  controllers: [PaymentsController],
+  controllers: [PaymentsController, OrganizationPaymentsController],
   providers: [PaymentsService, PaymentSettlementService],
   exports: [PaymentsService, PaymentSettlementService],
 })

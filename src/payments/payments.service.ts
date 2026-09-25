@@ -3,6 +3,14 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { toCurrencyCode } from '../common/money/currency';
 import type { CurrencyCode } from '../common/money/currency';
+import {
+  Owner,
+  OwnerRef,
+  ownerColumns,
+  ownerUserId,
+  ownerWhere,
+  toOwner,
+} from '../common/owner/owner';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { FxQuote } from '../fx/fx-quote.entity';
 import { FxService } from '../fx/fx.service';
@@ -18,6 +26,7 @@ import { UsersService } from '../users/users.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { Payment } from './payment.entity';
 import {
+  CustomerEmailRequiredException,
   PaymentNotFoundException,
   PaymentProviderUnavailableException,
 } from './payments.errors';
@@ -28,6 +37,11 @@ export interface InitializePaymentInput {
   currency: CurrencyCode;
   provider?: string;
   callbackUrl?: string;
+  /**
+   * Who pays. Required for organization payments (the payer is a customer);
+   * user top-ups default to the user's own email.
+   */
+  customerEmail?: string;
 }
 
 /** A payment with its transaction (status) and FX quote (if converting). */
@@ -65,12 +79,13 @@ export class PaymentsService {
    * treat our reference as idempotent).
    */
   async initialize(
-    userId: string,
+    ownerRef: OwnerRef,
     input: InitializePaymentInput,
     idempotencyKey: string,
   ): Promise<PaymentView> {
+    const owner = toOwner(ownerRef);
     const existing = await this.transactions.findByIdempotencyKey(
-      userId,
+      owner,
       idempotencyKey,
     );
     if (existing) {
@@ -86,13 +101,15 @@ export class PaymentsService {
       input.provider,
     ).name;
 
+    const customerEmail = await this.customerEmailFor(owner, input);
+
     const target = await this.wallets.resolveCreditTarget(
-      userId,
+      owner,
       input.currency,
     );
     const quote = target.requiresConversion
       ? await this.fx.createQuote({
-          userId,
+          userId: ownerUserId(owner),
           sourceCurrency: input.currency,
           targetCurrency: toCurrencyCode(target.wallet.currency),
           sourceAmount: input.amount,
@@ -105,7 +122,7 @@ export class PaymentsService {
         const transaction = await this.transactions.create(manager, {
           type: TransactionType.Payment,
           status: TransactionStatus.Pending,
-          userId,
+          ...ownerColumns(owner),
           destinationWalletId: target.wallet.id,
           amount: input.amount,
           currency: input.currency,
@@ -115,7 +132,8 @@ export class PaymentsService {
         return manager.save(
           manager.create(Payment, {
             transactionId: transaction.id,
-            userId,
+            ...ownerColumns(owner),
+            customerEmail,
             walletId: target.wallet.id,
             provider: providerName,
             providerReference: null,
@@ -127,9 +145,14 @@ export class PaymentsService {
         );
       });
     } catch (error) {
-      if (isUniqueViolation(error, 'uq_transactions_user_idempotency_key')) {
+      if (
+        isUniqueViolation(error, [
+          'uq_transactions_user_idempotency_key',
+          'uq_transactions_org_idempotency_key',
+        ])
+      ) {
         const winner = await this.transactions.findByIdempotencyKey(
-          userId,
+          owner,
           idempotencyKey,
         );
         if (winner) return this.view(await this.findByTransaction(winner.id));
@@ -140,8 +163,11 @@ export class PaymentsService {
     return this.ensureInitialized(payment, input.callbackUrl);
   }
 
-  async getForUser(userId: string, paymentId: string): Promise<PaymentView> {
-    const payment = await this.payments.findOneBy({ id: paymentId, userId });
+  async getOwned(owner: OwnerRef, paymentId: string): Promise<PaymentView> {
+    const payment = await this.payments.findOneBy({
+      id: paymentId,
+      ...ownerWhere(owner),
+    });
     if (!payment) {
       throw new PaymentNotFoundException();
     }
@@ -165,6 +191,23 @@ export class PaymentsService {
     return { payment, transaction, quote };
   }
 
+  private async customerEmailFor(
+    owner: Owner,
+    input: InitializePaymentInput,
+  ): Promise<string> {
+    if (input.customerEmail) {
+      return input.customerEmail;
+    }
+    if (owner.kind === 'organization') {
+      throw new CustomerEmailRequiredException();
+    }
+    const user = await this.users.findById(owner.id);
+    if (!user) {
+      throw new PaymentNotFoundException();
+    }
+    return user.email;
+  }
+
   private async findByTransaction(transactionId: string): Promise<Payment> {
     const payment = await this.payments.findOneBy({ transactionId });
     if (!payment) {
@@ -186,7 +229,6 @@ export class PaymentsService {
       return view;
     }
 
-    const user = await this.users.findById(payment.userId);
     try {
       const result = await this.providers
         .get(payment.provider)
@@ -194,7 +236,7 @@ export class PaymentsService {
           reference: view.transaction.reference,
           amount: payment.amount,
           currency: payment.currency,
-          customerEmail: user?.email ?? '',
+          customerEmail: payment.customerEmail,
           callbackUrl,
         });
       await this.payments.update(payment.id, {

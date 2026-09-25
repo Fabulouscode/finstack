@@ -12,6 +12,7 @@ import {
 import { bigintTransformer } from '../database/transformers';
 import { LedgerTransaction } from '../ledger/ledger-transaction.entity';
 import { sqlList } from '../ledger/ledger.types';
+import { Organization } from '../organizations/organization.entity';
 import { User } from '../users/user.entity';
 import { Wallet } from '../wallets/wallet.entity';
 import { TransactionStatus, TransactionType } from './transaction.types';
@@ -36,13 +37,27 @@ import { TransactionStatus, TransactionType } from './transaction.types';
   'chk_transactions_successful_has_ledger',
   `"status" NOT IN ('successful', 'reversed') OR "ledger_transaction_id" IS NOT NULL`,
 )
-// Domain-level idempotency: one transaction per user and Idempotency-Key.
+// Owned by exactly one user or organization.
+@Check(
+  'chk_transactions_owner',
+  `num_nonnulls("user_id", "organization_id") = 1`,
+)
+// Domain-level idempotency: one transaction per owner and Idempotency-Key.
 @Index('uq_transactions_user_idempotency_key', ['userId', 'idempotencyKey'], {
   unique: true,
-  where: '"idempotency_key" IS NOT NULL',
+  where: '"idempotency_key" IS NOT NULL AND "user_id" IS NOT NULL',
 })
+@Index(
+  'uq_transactions_org_idempotency_key',
+  ['organizationId', 'idempotencyKey'],
+  {
+    unique: true,
+    where: '"idempotency_key" IS NOT NULL AND "organization_id" IS NOT NULL',
+  },
+)
 // "My transactions" in both directions, newest first (keyset pagination).
 @Index('idx_transactions_user_created_id', ['userId', 'createdAt', 'id'])
+@Index('idx_transactions_org_created_id', ['organizationId', 'createdAt', 'id'])
 @Index('idx_transactions_counterparty_created_id', [
   'counterpartyUserId',
   'createdAt',
@@ -65,9 +80,9 @@ export class Transaction {
   @Column({ type: 'varchar', length: 20 })
   status: TransactionStatus;
 
-  /** The user who initiated the transaction. */
-  @Column({ type: 'uuid' })
-  userId: string;
+  /** The user who owns the transaction (null for organization transactions). */
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({
@@ -75,6 +90,17 @@ export class Transaction {
     foreignKeyConstraintName: 'fk_transactions_user',
   })
   user?: User;
+
+  /** The organization that owns the transaction (null for user transactions). */
+  @Column({ type: 'uuid', nullable: true })
+  organizationId: string | null;
+
+  @ManyToOne(() => Organization, { onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'organization_id',
+    foreignKeyConstraintName: 'fk_transactions_organization',
+  })
+  organization?: Organization;
 
   /** The other party, e.g. the recipient of a transfer. */
   @Column({ type: 'uuid', nullable: true })

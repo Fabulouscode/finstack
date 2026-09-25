@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
+import { Owner, ownerColumns, ownerWhere } from '../common/owner/owner';
 import { idempotencyConfig } from '../config/idempotency.config';
 import type { IdempotencyConfig } from '../config/idempotency.config';
 import { IdempotencyKey, IdempotencyKeyStatus } from './idempotency-key.entity';
@@ -10,7 +11,7 @@ import {
 } from './idempotency.errors';
 
 export interface RequestFingerprint {
-  userId: string;
+  owner: Owner;
   key: string;
   method: string;
   path: string;
@@ -32,7 +33,7 @@ export class IdempotencyService {
 
   /**
    * Claims the key for this request, or explains why it can't be executed.
-   * The unique (user_id, key) index makes the claim atomic: of concurrent
+   * The unique (owner, key) index makes the claim atomic: of concurrent
    * requests with one key, exactly one gets `execute`.
    */
   async begin(request: RequestFingerprint): Promise<BeginOutcome> {
@@ -43,7 +44,7 @@ export class IdempotencyService {
       }
 
       const existing = await this.keys.findOneBy({
-        userId: request.userId,
+        ...ownerWhere(request.owner),
         key: request.key,
       });
       if (!existing) {
@@ -112,7 +113,7 @@ export class IdempotencyService {
       .insert()
       .into(IdempotencyKey)
       .values({
-        userId: request.userId,
+        ...ownerColumns(request.owner),
         key: request.key,
         method: request.method,
         path: request.path,

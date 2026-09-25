@@ -1,8 +1,14 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
-import { Brackets, EntityManager, Repository } from 'typeorm';
+import {
+  Brackets,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import { AppException } from '../common/http/app.exception';
+import { OwnerRef, ownerWhere } from '../common/owner/owner';
 import type { Cursor } from '../common/pagination/cursor';
 import { Transaction } from './transaction.entity';
 import { assertTransition, TransactionStatus } from './transaction.types';
@@ -17,13 +23,16 @@ export class TransactionNotFoundException extends AppException {
   }
 }
 
+/** Set exactly one of `userId` and `organizationId` (the owner). */
 export type NewTransaction = Pick<
   Transaction,
-  'type' | 'status' | 'userId' | 'amount' | 'currency'
+  'type' | 'status' | 'amount' | 'currency'
 > &
   Partial<
     Pick<
       Transaction,
+      | 'userId'
+      | 'organizationId'
       | 'counterpartyUserId'
       | 'sourceWalletId'
       | 'destinationWalletId'
@@ -65,6 +74,8 @@ export class TransactionsService {
   create(manager: EntityManager, input: NewTransaction): Promise<Transaction> {
     return manager.save(
       manager.create(Transaction, {
+        userId: null,
+        organizationId: null,
         counterpartyUserId: null,
         sourceWalletId: null,
         destinationWalletId: null,
@@ -107,10 +118,40 @@ export class TransactionsService {
   }
 
   findByIdempotencyKey(
-    userId: string,
+    owner: OwnerRef,
     idempotencyKey: string,
   ): Promise<Transaction | null> {
-    return this.transactions.findOneBy({ userId, idempotencyKey });
+    return this.transactions.findOneBy({
+      ...ownerWhere(owner),
+      idempotencyKey,
+    });
+  }
+
+  async getForOrganization(
+    organizationId: string,
+    transactionId: string,
+  ): Promise<Transaction> {
+    const transaction = await this.transactions.findOneBy({
+      id: transactionId,
+      organizationId,
+    });
+    if (!transaction) {
+      throw new TransactionNotFoundException();
+    }
+    return transaction;
+  }
+
+  /** The organization's transactions, newest first, keyset-paginated. */
+  listForOrganization(
+    organizationId: string,
+    options: { limit: number; before?: Cursor },
+  ): Promise<TransactionPage> {
+    return this.page(
+      this.transactions
+        .createQueryBuilder('txn')
+        .where('txn.organizationId = :organizationId', { organizationId }),
+      options,
+    );
   }
 
   /** Visible to the initiator and the counterparty; others get 404. */
@@ -138,20 +179,30 @@ export class TransactionsService {
   }
 
   /** Newest first, keyset-paginated, in both directions. */
-  async listForUser(
+  listForUser(
     userId: string,
     options: { limit: number; before?: Cursor },
   ): Promise<TransactionPage> {
-    const query = this.transactions
-      .createQueryBuilder('txn')
-      .where(
-        new Brackets((q) =>
-          q
-            .where('txn.userId = :userId')
-            .orWhere('txn.counterpartyUserId = :userId'),
-        ),
-      )
-      .setParameter('userId', userId)
+    return this.page(
+      this.transactions
+        .createQueryBuilder('txn')
+        .where(
+          new Brackets((q) =>
+            q
+              .where('txn.userId = :userId')
+              .orWhere('txn.counterpartyUserId = :userId'),
+          ),
+        )
+        .setParameter('userId', userId),
+      options,
+    );
+  }
+
+  private async page(
+    base: SelectQueryBuilder<Transaction>,
+    options: { limit: number; before?: Cursor },
+  ): Promise<TransactionPage> {
+    const query = base
       .orderBy('txn.createdAt', 'DESC')
       .addOrderBy('txn.id', 'DESC')
       .limit(options.limit + 1);

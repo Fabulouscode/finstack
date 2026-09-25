@@ -144,6 +144,32 @@ export class TransactionResponseDto {
   }
 }
 
+/**
+ * An organization's view: money into its wallets (payments) is incoming,
+ * money out (refunds) is outgoing.
+ */
+export function organizationTransactionDto(
+  transaction: Transaction,
+): TransactionResponseDto {
+  const outgoing = transaction.sourceWalletId !== null;
+  return {
+    id: transaction.id,
+    reference: transaction.reference,
+    type: transaction.type,
+    status: transaction.status,
+    direction: outgoing ? 'outgoing' : 'incoming',
+    amount: toApiAmount(transaction.amount),
+    currency: transaction.currency,
+    walletId: outgoing
+      ? transaction.sourceWalletId
+      : transaction.destinationWalletId,
+    description: transaction.description,
+    failureCode: transaction.failureCode,
+    createdAt: transaction.createdAt,
+    completedAt: transaction.completedAt,
+  };
+}
+
 export class TransactionsPageDto {
   @ApiProperty({ type: [TransactionResponseDto] })
   data: TransactionResponseDto[];

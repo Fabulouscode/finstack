@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
+  IsEmail,
   IsIn,
   IsInt,
   IsPositive,
@@ -48,6 +50,20 @@ export class InitializePaymentRequestDto {
   @IsUrl({ protocols: ['https', 'http'], require_protocol: true })
   @MaxLength(2048)
   callbackUrl?: string;
+}
+
+export class InitializeOrganizationPaymentRequestDto extends InitializePaymentRequestDto {
+  @ApiProperty({
+    description:
+      "The paying customer's email, passed to the provider's checkout",
+    example: 'customer@example.com',
+  })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsEmail()
+  @MaxLength(320)
+  customerEmail: string;
 }
 
 export class PaymentCreditDto {

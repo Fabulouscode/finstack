@@ -53,7 +53,7 @@ describe('WalletsService (integration)', () => {
     userId: string,
     walletId: string,
   ): Promise<WalletBalances> =>
-    (await wallets.getForUser(userId, walletId)).balances;
+    (await wallets.getOwned(userId, walletId)).balances;
 
   beforeAll(async () => {
     moduleRef = await createTestModule([UsersModule, WalletsModule]);
@@ -143,7 +143,7 @@ describe('WalletsService (integration)', () => {
         (r): r is PromiseRejectedResult => r.status === 'rejected',
       );
       expect(rejected?.reason).toBeInstanceOf(WalletAlreadyExistsException);
-      await expect(wallets.listForUser(aliceId)).resolves.toHaveLength(1);
+      await expect(wallets.listFor(aliceId)).resolves.toHaveLength(1);
     });
 
     it('makes the single wallet primary and the credit target for any currency', async () => {
@@ -170,7 +170,7 @@ describe('WalletsService (integration)', () => {
     it('hides wallets owned by other users', async () => {
       const { wallet } = await wallets.create(aliceId, 'NGN');
 
-      await expect(wallets.getForUser(bobId, wallet.id)).rejects.toThrow(
+      await expect(wallets.getOwned(bobId, wallet.id)).rejects.toThrow(
         WalletNotFoundException,
       );
       await expect(wallets.getPrimary(bobId)).rejects.toThrow(
@@ -288,7 +288,7 @@ describe('WalletsService (integration)', () => {
       const seen: string[] = [];
       let before;
       for (let page = 0; page < 10; page++) {
-        const result = await wallets.listEntriesForUser(aliceId, wallet.id, {
+        const result = await wallets.listEntries(aliceId, wallet.id, {
           limit: 3,
           before,
         });
@@ -360,7 +360,7 @@ describe('WalletsService in multiple mode (integration)', () => {
     await expect(wallets.create(userId, 'NGN')).rejects.toThrow(
       WalletAlreadyExistsException,
     );
-    const listed = await wallets.listForUser(userId);
+    const listed = await wallets.listFor(userId);
     expect(listed.map(({ wallet }) => wallet.currency)).toEqual(['USD', 'NGN']);
   });
 
@@ -372,7 +372,7 @@ describe('WalletsService in multiple mode (integration)', () => {
     );
 
     expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
-    const listed = await wallets.listForUser(userId);
+    const listed = await wallets.listFor(userId);
     expect(listed).toHaveLength(3);
     expect(listed.filter(({ wallet }) => wallet.isPrimary)).toHaveLength(1);
   });
@@ -386,7 +386,7 @@ describe('WalletsService in multiple mode (integration)', () => {
     await expect(wallets.getPrimary(userId)).resolves.toMatchObject({
       wallet: { id: ngn.id },
     });
-    const primaries = (await wallets.listForUser(userId)).filter(
+    const primaries = (await wallets.listFor(userId)).filter(
       ({ wallet }) => wallet.isPrimary,
     );
     expect(primaries).toHaveLength(1);
@@ -456,10 +456,10 @@ describe('WalletsService in multiple mode (integration)', () => {
         description: 'Convert NGN to USD',
       });
 
-      await expect(wallets.getForUser(userId, ngnId)).resolves.toMatchObject({
+      await expect(wallets.getOwned(userId, ngnId)).resolves.toMatchObject({
         balances: { available: 450_000n },
       });
-      await expect(wallets.getForUser(userId, usdId)).resolves.toMatchObject({
+      await expect(wallets.getOwned(userId, usdId)).resolves.toMatchObject({
         balances: { available: 990n },
       });
     });

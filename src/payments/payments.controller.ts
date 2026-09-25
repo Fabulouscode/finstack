@@ -91,7 +91,7 @@ export class PaymentsController {
     @Param('paymentId', ParseUUIDPipe) paymentId: string,
   ): Promise<PaymentResponseDto> {
     return PaymentResponseDto.from(
-      await this.payments.getForUser(user.id, paymentId),
+      await this.payments.getOwned(user.id, paymentId),
     );
   }
 
@@ -110,10 +110,10 @@ export class PaymentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('paymentId', ParseUUIDPipe) paymentId: string,
   ): Promise<PaymentResponseDto> {
-    const { payment } = await this.payments.getForUser(user.id, paymentId);
+    const { payment } = await this.payments.getOwned(user.id, paymentId);
     await this.settlement.settle(payment);
     return PaymentResponseDto.from(
-      await this.payments.getForUser(user.id, paymentId),
+      await this.payments.getOwned(user.id, paymentId),
     );
   }
 }
