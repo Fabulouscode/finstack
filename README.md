@@ -74,6 +74,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
 | `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
 | `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `USD:stripe,NGN:paystack` |
+| `EMAIL_DRIVER` / `EMAIL_FROM` / `SMTP_URL` | `log` / `FinStack <no-reply@finstack.local>` / — | Notification emails: `log` prints them; `smtp` sends via `SMTP_URL` |
 | `DATA_ENCRYPTION_KEY` | dev key | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets such as webhook signing secrets. **Required in production.** |
 | `OUTBOUND_WEBHOOK_MAX_ATTEMPTS` / `_BACKOFF_MS` / `_TIMEOUT_MS` | `10` / `30000` / `10000` | Delivery retries (exponential), first delay, request timeout |
 | `OUTBOUND_WEBHOOK_DISABLE_AFTER_FAILURES` | `20` | Disable an endpoint after this many failed deliveries in a row |
@@ -438,6 +439,15 @@ function verify(header, rawBody, secret, toleranceSeconds = 300) {
 
 Signing secrets are stored encrypted (`DATA_ENCRYPTION_KEY`), and URLs that point at private or internal addresses are refused in production. See [ADR 0021](./docs/adr/0021-outbound-webhooks.md).
 
+## Email notifications
+
+Users are emailed about their money: payments received (including when held funds become available), refunds sent, withdrawals sent, failed or returned, and transfers sent and received. For organizations, failed or returned payouts go to their owners and admins; everything else reaches organizations through webhooks. Each email is sent **once**, even if its event is processed twice.
+
+- `EMAIL_DRIVER=log` (default) logs emails instead of sending them.
+- `EMAIL_DRIVER=smtp` with `SMTP_URL=smtps://user:pass@smtp.example.com:465` sends through any SMTP service (SES, Postmark, SendGrid, Mailgun). Set the sender with `EMAIL_FROM`.
+
+See [ADR 0022](./docs/adr/0022-email-notifications.md).
+
 ## Events and background jobs
 
 Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
@@ -526,7 +536,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation, outbound webhooks): email notifications, admin, observability
+- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications): admin tooling, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

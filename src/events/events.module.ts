@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { NotificationsEventHandler } from '../notifications/notifications.event-handler';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { OutboundWebhooksEventHandler } from '../outbound-webhooks/outbound-webhooks.event-handler';
 import { OutboundWebhooksModule } from '../outbound-webhooks/outbound-webhooks.module';
 import { QueuesModule } from '../queues/queues.module';
@@ -11,12 +13,16 @@ import { LoggingEventHandler } from './logging-event.handler';
  * outgoing merchant webhooks) in the DOMAIN_EVENT_HANDLERS factory.
  */
 @Module({
-  imports: [QueuesModule, OutboundWebhooksModule],
+  imports: [QueuesModule, OutboundWebhooksModule, NotificationsModule],
   providers: [
     LoggingEventHandler,
     {
       provide: DOMAIN_EVENT_HANDLERS,
-      inject: [LoggingEventHandler, OutboundWebhooksEventHandler],
+      inject: [
+        LoggingEventHandler,
+        OutboundWebhooksEventHandler,
+        NotificationsEventHandler,
+      ],
       useFactory: (...handlers: unknown[]) => handlers,
     },
     DomainEventsProcessor,

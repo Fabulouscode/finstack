@@ -141,6 +141,7 @@ describe('Outbound webhooks (e2e)', () => {
 
     await eventually(() => {
       expect(receiver.received).toHaveLength(1);
+      return Promise.resolve();
     });
     const [received] = receiver.received;
     const [event] = receiver.events();
@@ -271,6 +272,7 @@ describe('Outbound webhooks (e2e)', () => {
     await asOwner('post', endpointsPath(`/${endpoint.id}/test`)).expect(202);
     await eventually(() => {
       expect(receiver.received).toHaveLength(1);
+      return Promise.resolve();
     });
     const [received] = receiver.received;
     const header = String(received?.headers['finstack-signature']);
