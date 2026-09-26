@@ -44,9 +44,9 @@ describe('PaymentProvidersService.select', () => {
     );
   });
 
-  it('uses the requested or default provider for other currencies', () => {
-    expect(routed().select('NGN').name).toBe('mock');
-    expect(routed().select('NGN', 'paystack').name).toBe('paystack');
+  it('uses the suggested or requested provider for other currencies', () => {
+    expect(routed().select('NGN').name).toBe('paystack');
+    expect(routed().select('NGN', 'mock').name).toBe('mock');
   });
 
   it('rejects currencies the chosen provider cannot charge', () => {
@@ -69,6 +69,59 @@ describe('PaymentProvidersService.select', () => {
         currencyRoutes: { JPY: 'paystack' },
       }),
     ).toThrow(ConfigValidationError);
+  });
+});
+
+describe('PaymentProvidersService provider preferences', () => {
+  const both = (
+    overrides: Parameters<typeof paymentsConfigFixture>[0] = {},
+  ): PaymentProvidersService =>
+    service({
+      enabledProviders: ['paystack', 'stripe'],
+      defaultProvider: 'paystack',
+      currencyRoutes: {},
+      ...overrides,
+    });
+
+  it('suggests Paystack for local currencies and Stripe for international ones', () => {
+    for (const currency of ['NGN', 'GHS', 'KES', 'ZAR']) {
+      expect(both().select(currency).name).toBe('paystack');
+    }
+    for (const currency of ['USD', 'EUR', 'GBP', 'JPY']) {
+      expect(both().select(currency).name).toBe('stripe');
+    }
+  });
+
+  it('honours the provider the client asks for', () => {
+    expect(both().select('USD', 'paystack').name).toBe('paystack');
+    expect(both().select('NGN', 'stripe').name).toBe('stripe');
+  });
+
+  it("lets the operator's routes win, even over the client", () => {
+    const routed = both({ currencyRoutes: { USD: 'paystack' } });
+    expect(routed.select('USD').name).toBe('paystack');
+    expect(() => routed.select('USD', 'stripe')).toThrow(
+      ProviderNotAllowedForCurrencyException,
+    );
+  });
+
+  it('falls back to the default when the suggested provider is off', () => {
+    const stripeOnly = service({
+      enabledProviders: ['stripe'],
+      defaultProvider: 'stripe',
+      currencyRoutes: {},
+    });
+    expect(stripeOnly.select('NGN').name).toBe('stripe');
+
+    const paystackOnly = service({
+      enabledProviders: ['paystack'],
+      defaultProvider: 'paystack',
+      currencyRoutes: {},
+    });
+    expect(paystackOnly.select('USD').name).toBe('paystack');
+    expect(() => paystackOnly.select('EUR')).toThrow(
+      CurrencyNotSupportedByProviderException,
+    );
   });
 });
 

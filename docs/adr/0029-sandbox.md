@@ -45,4 +45,4 @@ Payout behaviour is chosen per bank account, like card networks' test cards, so 
 
 - **Run a sandbox as a single instance.** The mock provider's state (checkouts, payouts) lives in process memory, so with several instances a webhook could be processed by an instance that doesn't know the payment. Persisting mock state in Redis would lift this limit.
 - The sandbox needs its own database and Redis, and is deployed and upgraded like production. The same build serves both environments.
-- Currency policies still apply: with Stripe enabled in a sandbox (test keys), USD goes to Stripe's test mode rather than the mock provider.
+- Operator routes still apply in a sandbox. Suggestions don't override the simulation API, which asks for the mock provider explicitly.

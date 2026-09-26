@@ -6,6 +6,7 @@ import type { PaymentsConfig } from '../config/payments.config';
 import { MockPaymentProvider } from './mock/mock-payment.provider';
 import { PaymentProvider, PayoutCapability } from './payment-provider';
 import { PaystackProvider } from './paystack/paystack.provider';
+import { PROVIDER_PREFERENCES } from './provider-preferences';
 import { StripeProvider } from './stripe/stripe.provider';
 
 export class ProviderNotAllowedForCurrencyException extends AppException {
@@ -54,6 +55,8 @@ export interface PayoutProvider {
 @Injectable()
 export class PaymentProvidersService {
   private readonly providers: Map<string, PaymentProvider>;
+  /** Suggested providers that apply here (enabled and able to charge). */
+  private readonly preferred = new Map<string, string>();
 
   constructor(
     @Inject(paymentsConfig.KEY)
@@ -85,12 +88,22 @@ export class PaymentProvidersService {
     if (invalid.length > 0) {
       throw new ConfigValidationError('payments', invalid);
     }
+
+    for (const [currency, name] of Object.entries(PROVIDER_PREFERENCES)) {
+      if (this.providers.get(name)?.supportedCurrencies.includes(currency)) {
+        this.preferred.set(currency, name);
+      }
+    }
   }
 
   /**
-   * Picks the provider for a payment. A configured currency route always
-   * wins (and rejects a conflicting explicit choice); otherwise the requested
-   * or default provider is used, provided it can charge the currency.
+   * Picks the provider for a payment, in order:
+   * 1. the operator's route for the currency (PAYMENT_CURRENCY_ROUTES), which
+   *    is a rule: a conflicting request is refused;
+   * 2. the provider the client asked for;
+   * 3. FinStack's suggestion (PROVIDER_PREFERENCES), if that provider is on;
+   * 4. the default provider.
+   * The chosen provider must be able to charge the currency.
    */
   select(currency: string, requested?: string): PaymentProvider {
     const routed = this.config.currencyRoutes[currency];
@@ -101,7 +114,9 @@ export class PaymentProvidersService {
       return this.get(routed);
     }
 
-    const provider = this.get(requested ?? this.defaultName);
+    const provider = this.get(
+      requested ?? this.preferred.get(currency) ?? this.defaultName,
+    );
     if (!provider.supportedCurrencies.includes(currency)) {
       throw new CurrencyNotSupportedByProviderException(
         provider.name,
@@ -129,6 +144,7 @@ export class PaymentProvidersService {
 
     const candidates = [
       this.config.currencyRoutes[currency],
+      this.preferred.get(currency),
       this.defaultName,
       ...this.providers.keys(),
     ];

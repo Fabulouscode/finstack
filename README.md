@@ -73,7 +73,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | `IDEMPOTENCY_LOCK_TIMEOUT_SECONDS` | `60` | After this, an in-progress key may be taken over by a retry |
 | `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
 | `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
-| `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `NGN:paystack` (USD always goes to Stripe) |
+| `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `USD:stripe,NGN:paystack` (otherwise FinStack suggests: local → Paystack, international → Stripe) |
 | `EMAIL_DRIVER` / `EMAIL_FROM` / `SMTP_URL` | `log` / `FinStack <no-reply@finstack.local>` / — | Notification emails: `log` prints them; `smtp` sends via `SMTP_URL` |
 | `LOG_FORMAT` / `LOG_LEVEL` | `json` in production, else `pretty` / `info` | Log output |
 | `METRICS_ENABLED` / `METRICS_TOKEN` | `true` / — | Prometheus `/metrics`; the token is required to expose it in production |
@@ -342,21 +342,17 @@ curl -X POST localhost:3000/v1/sandbox/payments/<paymentId>/complete \
 | Provider | Currencies | Webhook URL | Notes |
 | --- | --- | --- | --- |
 | `mock` | all supported | `/v1/webhooks/mock` | Development only; refused in production |
-| `paystack` | NGN, GHS, ZAR, KES | `/v1/webhooks/paystack` | Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. **USD is never charged through Paystack.** |
-| `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | **The only provider for USD** (routed automatically when enabled). Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
+| `paystack` | NGN, USD, GHS, ZAR, KES | `/v1/webhooks/paystack` | Suggested for NGN, GHS, KES and ZAR. Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. |
+| `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | Suggested for USD, EUR, GBP and JPY. Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
 
-**USD goes through Stripe only.** This is enforced in code, not left to configuration:
+**Which provider charges a payment.** Your backend can pass `provider`, but usually leaves it out and FinStack chooses. End customers never pick. The order is:
 
-- Paystack is never offered USD.
-- With Stripe enabled, USD payments are routed to Stripe automatically, and a route sending USD elsewhere is refused at startup.
-- Without Stripe, USD payments are refused. USD wallets can still receive NGN (or other) payments, converted at a locked quote.
-- The mock provider may charge USD, for local development only.
+1. **Your routes:** `PAYMENT_CURRENCY_ROUTES`, e.g. `USD:stripe,NGN:paystack`. These are rules: a routed currency always uses that provider, and asking for another returns `422 PROVIDER_NOT_ALLOWED_FOR_CURRENCY`.
+2. **The provider your backend asked for.**
+3. **FinStack's suggestion:** local African currencies (NGN, GHS, KES, ZAR) go to Paystack, and international ones (USD, EUR, GBP, JPY) go to Stripe. It only applies if that provider is enabled.
+4. **`DEFAULT_PAYMENT_PROVIDER`.**
 
-**Routing by currency.** `PAYMENT_CURRENCY_ROUTES` pins other currencies to providers, e.g. `NGN:paystack`:
-
-- A payment in a routed currency always uses that provider. Asking for another returns `422 PROVIDER_NOT_ALLOWED_FOR_CURRENCY`.
-- Other currencies use the requested provider or `DEFAULT_PAYMENT_PROVIDER`.
-- The app refuses to start if a route points to a provider that isn't enabled or can't charge that currency.
+The chosen provider must be able to charge the currency, or the request fails before anything is created. The app refuses to start if a route points to a provider that isn't enabled or can't charge that currency.
 
 See [ADR 0025](./docs/adr/0025-currency-routing.md).
 
@@ -674,7 +670,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Transactions (state machine), idempotency keys, transfers
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
-- [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe), currency routing (USD through Stripe only), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
+- [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe), currency routing (local → Paystack, international → Stripe, overridable), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
 - [ ] **Phase 4 — Developer platform** (done: sandbox): CLI, more providers, dashboard

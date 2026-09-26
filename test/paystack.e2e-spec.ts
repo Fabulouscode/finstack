@@ -164,13 +164,10 @@ describe('Paystack provider (e2e, fake Paystack API)', () => {
     });
   });
 
-  it('never charges USD: FinStack processes USD through Stripe only', async () => {
+  it('charges USD too, where the business uses Paystack for it', async () => {
     const response = await startPayment({ amount: 5_000, currency: 'USD' });
-    expect(response.status).toBe(422);
-    expect(response.body).toMatchObject({
-      code: 'CURRENCY_NOT_SUPPORTED_BY_PROVIDER',
-    });
-    expect(paystack.requests).toHaveLength(0);
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ provider: 'paystack' });
   });
 
   it('refuses currencies Paystack cannot charge before creating anything', async () => {
