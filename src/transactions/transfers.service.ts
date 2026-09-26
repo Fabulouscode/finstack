@@ -1,9 +1,11 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { forwardRef, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AppException } from '../common/http/app.exception';
 import { FeeOperation } from '../fees/fee-rule.entity';
 import { FeesService } from '../fees/fees.service';
+import { LimitOperation } from '../limits/limit-rule.entity';
+import { LimitsService } from '../limits/limits.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { OutboxService } from '../outbox/outbox.service';
 import { UsersService } from '../users/users.service';
@@ -75,6 +77,8 @@ export class TransfersService {
     private readonly users: UsersService,
     private readonly outbox: OutboxService,
     private readonly fees: FeesService,
+    @Inject(forwardRef(() => LimitsService))
+    private readonly limits: LimitsService,
   ) {}
 
   async transfer(
@@ -121,6 +125,12 @@ export class TransfersService {
 
     try {
       return await this.dataSource.transaction(async (manager) => {
+        await this.limits.assertWithinLimitsWithin(manager, {
+          owner: userId,
+          operation: LimitOperation.Transfer,
+          currency,
+          amount: input.amount,
+        });
         const transaction = await this.transactions.create(manager, {
           type: TransactionType.Transfer,
           status: TransactionStatus.Processing,

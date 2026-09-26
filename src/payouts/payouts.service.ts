@@ -13,6 +13,8 @@ import {
 } from '../common/owner/owner';
 import { FeeOperation } from '../fees/fee-rule.entity';
 import { FeeQuote, FeesService } from '../fees/fees.service';
+import { LimitOperation } from '../limits/limit-rule.entity';
+import { LimitsService } from '../limits/limits.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { CurrencyMismatchException } from '../ledger/ledger.errors';
 import { LedgerService } from '../ledger/ledger.service';
@@ -37,7 +39,10 @@ import { WalletsService } from '../wallets/wallets.service';
 import { PayoutDestination } from './payout-destination.entity';
 import { PayoutDestinationsService } from './payout-destinations.service';
 import { Payout } from './payout.entity';
-import { PayoutNotFoundException } from './payouts.errors';
+import {
+  PayoutDestinationCoolingOffException,
+  PayoutNotFoundException,
+} from './payouts.errors';
 
 const { Debit, Credit } = EntryDirection;
 
@@ -93,6 +98,7 @@ export class PayoutsService {
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
     private readonly fees: FeesService,
+    private readonly limits: LimitsService,
   ) {}
 
   /** Idempotent by Idempotency-Key (per owner), like payments. */
@@ -114,6 +120,13 @@ export class PayoutsService {
       owner,
       input.destinationId,
     );
+    if (destination.payoutsAvailableAt.getTime() > Date.now()) {
+      // A new bank account can't receive money straight away: this gives the
+      // real owner time to react (they're emailed) if an attacker added it.
+      throw new PayoutDestinationCoolingOffException(
+        destination.payoutsAvailableAt,
+      );
+    }
     const wallet = await this.sourceWallet(owner, destination, input.walletId);
     // Fails fast if the provider can no longer pay out in this currency.
     this.providers.payoutsOf(destination.provider);
@@ -287,6 +300,12 @@ export class PayoutsService {
     fee: FeeQuote,
     idempotencyKey: string,
   ): Promise<Payout> {
+    await this.limits.assertWithinLimitsWithin(manager, {
+      owner,
+      operation: LimitOperation.Payout,
+      currency: wallet.currency,
+      amount: input.amount,
+    });
     const reference = generatePayoutReference();
     const transaction = await this.transactions.create(manager, {
       type: TransactionType.Withdrawal,

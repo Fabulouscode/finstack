@@ -113,6 +113,31 @@ export function notificationRules(
       return [];
     }
 
+    case 'payout_destination.added': {
+      const account = `${str(data.bankName) ?? 'Bank'} ****${str(data.accountNumberLast4) ?? ''} (${str(data.accountName) ?? ''})`;
+      const availableAt = str(data.payoutsAvailableAt);
+      const waiting =
+        availableAt && new Date(availableAt).getTime() > Date.now() + 60_000;
+      const rule = {
+        template: 'payout_destination_added',
+        subject: 'A bank account was added for withdrawals',
+        paragraphs: [
+          `${account} was added as a withdrawal account.`,
+          ...(waiting
+            ? [
+                `For your security, withdrawals to it are possible from ${new Date(availableAt).toUTCString()}.`,
+              ]
+            : []),
+          'If you did not add it, remove it and change your password right away.',
+        ],
+      };
+      if (userId) return [{ ...rule, to: { userId } }];
+      if (organizationId) {
+        return [{ ...rule, to: { organizationAdminsOf: organizationId } }];
+      }
+      return [];
+    }
+
     case 'transfer.completed': {
       const amount =
         typeof data.amount === 'string' && typeof data.currency === 'string'

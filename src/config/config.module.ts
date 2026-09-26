@@ -11,6 +11,7 @@ import { jobsConfig } from './jobs.config';
 import { observabilityConfig } from './observability.config';
 import { outboundWebhooksConfig } from './outbound-webhooks.config';
 import { paymentsConfig } from './payments.config';
+import { payoutsConfig } from './payouts.config';
 import { redisConfig } from './redis.config';
 import { securityConfig } from './security.config';
 import { walletsConfig } from './wallets.config';
@@ -38,6 +39,7 @@ import { walletsConfig } from './wallets.config';
         observabilityConfig,
         outboundWebhooksConfig,
         paymentsConfig,
+        payoutsConfig,
         redisConfig,
         securityConfig,
         walletsConfig,

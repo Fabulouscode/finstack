@@ -253,7 +253,12 @@ describe('Email notifications (e2e)', () => {
 
     await eventually(() => {
       for (const address of ['owner@example.com', 'admin@example.com']) {
-        expect(emailsTo(address).map((e) => e.subject)).toEqual([
+        expect(
+          emailsTo(address)
+            .map((e) => e.subject)
+            .sort(),
+        ).toEqual([
+          'A bank account was added for withdrawals',
           'Withdrawal failed: USD 40.00',
         ]);
       }

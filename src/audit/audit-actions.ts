@@ -29,6 +29,8 @@ export const AuditAction = {
   FxRateSet: 'fx.rate_set',
   FeeRuleSet: 'fee_rule.set',
   FeeRuleRetired: 'fee_rule.retired',
+  LimitRuleSet: 'limit_rule.set',
+  LimitRuleRetired: 'limit_rule.retired',
   ReconciliationItemResolved: 'reconciliation_item.resolved',
   WebhookReplayed: 'webhook.replayed',
   RefreshTokenReuseDetected: 'auth.refresh_token_reuse_detected',

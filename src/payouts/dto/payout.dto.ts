@@ -92,6 +92,13 @@ export class PayoutDestinationResponseDto {
   @ApiProperty({ nullable: true, example: 'Main account' })
   label: string | null;
 
+  @ApiProperty({
+    format: 'date-time',
+    description:
+      'Payouts are allowed from this time (cooling-off for new accounts)',
+  })
+  payoutsAvailableAt: Date;
+
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
@@ -105,6 +112,7 @@ export class PayoutDestinationResponseDto {
       accountName: destination.accountName,
       accountNumberLast4: destination.accountNumberLast4,
       label: destination.label,
+      payoutsAvailableAt: destination.payoutsAvailableAt,
       createdAt: destination.createdAt,
     };
   }

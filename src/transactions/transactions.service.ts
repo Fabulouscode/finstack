@@ -12,7 +12,11 @@ import { OwnerRef, ownerWhere } from '../common/owner/owner';
 import type { Cursor } from '../common/pagination/cursor';
 import { sqlList } from '../ledger/ledger.types';
 import { Transaction } from './transaction.entity';
-import { assertTransition, TransactionStatus } from './transaction.types';
+import {
+  assertTransition,
+  TransactionStatus,
+  TransactionType,
+} from './transaction.types';
 
 export class TransactionNotFoundException extends AppException {
   constructor() {
@@ -130,6 +134,34 @@ export class TransactionsService {
       throw new TransactionNotFoundException();
     }
     return transaction;
+  }
+
+  /**
+   * What an owner has moved since `since`: transactions of `type` in
+   * `currency` that aren't failed, cancelled or expired (in-flight ones
+   * count, so they can't be used to exceed a limit).
+   */
+  async usageWithin(
+    manager: EntityManager,
+    owner: OwnerRef,
+    type: TransactionType,
+    currency: string,
+    since: Date,
+  ): Promise<{ amount: bigint; count: number }> {
+    const where = ownerWhere(owner);
+    const [column, id] =
+      'userId' in where
+        ? ['user_id', where.userId]
+        : ['organization_id', where.organizationId];
+    const [row] = await manager.query<{ amount: string; count: number }[]>(
+      `SELECT COALESCE(SUM(amount), 0) AS amount, COUNT(*)::int AS count
+         FROM transactions
+        WHERE ${column} = $1 AND type = $2 AND currency = $3
+          AND created_at >= $4
+          AND status NOT IN ('failed', 'cancelled', 'expired')`,
+      [id, type, currency, since],
+    );
+    return { amount: BigInt(row?.amount ?? 0), count: row?.count ?? 0 };
   }
 
   /** Adds keys to a transaction's metadata, atomically (jsonb merge). */

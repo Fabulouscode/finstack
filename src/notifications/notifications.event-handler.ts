@@ -12,6 +12,7 @@ export class NotificationsEventHandler implements DomainEventHandler {
     'payout.failed',
     'payout.reversed',
     'transfer.completed',
+    'payout_destination.added',
   ] as const;
 
   constructor(private readonly notifications: NotificationsService) {}

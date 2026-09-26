@@ -16,6 +16,8 @@ import { FxQuote } from '../fx/fx-quote.entity';
 import { FeeOperation } from '../fees/fee-rule.entity';
 import { FeesService } from '../fees/fees.service';
 import { FxService } from '../fx/fx.service';
+import { LimitOperation } from '../limits/limit-rule.entity';
+import { LimitsService } from '../limits/limits.service';
 import {
   PaymentProviderError,
   TimeRange,
@@ -69,6 +71,7 @@ export class PaymentsService {
     private readonly fx: FxService,
     private readonly users: UsersService,
     private readonly fees: FeesService,
+    private readonly limits: LimitsService,
   ) {}
 
   /**
@@ -132,6 +135,12 @@ export class PaymentsService {
     let payment: Payment;
     try {
       payment = await this.dataSource.transaction(async (manager) => {
+        await this.limits.assertWithinLimitsWithin(manager, {
+          owner,
+          operation: LimitOperation.Payment,
+          currency: input.currency,
+          amount: input.amount,
+        });
         const transaction = await this.transactions.create(manager, {
           type: TransactionType.Payment,
           status: TransactionStatus.Pending,

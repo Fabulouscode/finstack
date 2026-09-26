@@ -81,6 +81,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | `OUTBOUND_WEBHOOK_MAX_ATTEMPTS` / `_BACKOFF_MS` / `_TIMEOUT_MS` | `10` / `30000` / `10000` | Delivery retries (exponential), first delay, request timeout |
 | `OUTBOUND_WEBHOOK_DISABLE_AFTER_FAILURES` | `20` | Disable an endpoint after this many failed deliveries in a row |
 | `OUTBOUND_WEBHOOK_ALLOW_PRIVATE_URLS` | off in production | Allow endpoints on private/loopback addresses (local development) |
+| `PAYOUT_DESTINATION_COOLDOWN_MINUTES` | `0` | New bank accounts wait this long before receiving payouts (1440 recommended in production) |
 | `PAYMENT_SETTLEMENT_DELAY_SECONDS` | `0` | Settlement hold: payment funds stay pending this long before they can be spent or paid out |
 | `MOCK_PROVIDER_WEBHOOK_SECRET` | — (required with `mock`) | HMAC secret the mock provider signs webhooks with |
 | `PAYSTACK_SECRET_KEY` | — (required with `paystack`) | `sk_test_…` outside production, `sk_live_…` only in production. Also verifies webhooks. |
@@ -391,6 +392,24 @@ curl -X POST localhost:3000/v1/admin/fee-rules -H "Authorization: Bearer $ADMIN"
 - **Quotes:** apps can show costs up front with `GET /v1/fees/quote?operation=payout&currency=USD&amount=10000`, or `/v1/organizations/:id/fees/quote` for an organization's own rates.
 
 See [ADR 0026](./docs/adr/0026-fees.md).
+
+## Risk controls
+
+**Velocity limits.** Admins set limit rules per operation (`payment`, `payout`, `transfer`) and currency, with per-organization overrides. A rule can cap a single transaction, the rolling 24-hour amount and count, and the rolling 30-day amount.
+
+```bash
+# At most $5,000 per payout and $10,000 per day
+curl -X POST localhost:3000/v1/admin/limit-rules -H "Authorization: Bearer $ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"operation":"payout","currency":"USD","maxPerTransaction":500000,"maxDailyAmount":1000000}'
+```
+
+- **Enforcement:** limits are checked atomically with the operation, under a per-owner lock, so concurrent requests can't exceed them together. Over-limit requests get `422 LIMIT_EXCEEDED` with what's left.
+- **Visibility:** users and organizations see their usage at `GET /v1/limits` and `/v1/organizations/:id/limits`.
+
+**New payout accounts cool off.** With `PAYOUT_DESTINATION_COOLDOWN_MINUTES` set (1440 is recommended in production), a newly added bank account can't receive payouts until the period ends. The owner is emailed when one is added, so a hijacked account can't be drained to the attacker's bank before the owner can react.
+
+See [ADR 0027](./docs/adr/0027-risk-controls.md).
 
 ## Refunds
 

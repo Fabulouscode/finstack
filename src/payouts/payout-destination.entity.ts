@@ -92,6 +92,13 @@ export class PayoutDestination {
   @CreateDateColumn({ type: 'timestamptz', precision: 3 })
   createdAt: Date;
 
+  /**
+   * When payouts to it are allowed: the cooling-off period after it was
+   * added (PAYOUT_DESTINATION_COOLDOWN_MINUTES at that time).
+   */
+  @Column({ type: 'timestamptz', precision: 3 })
+  payoutsAvailableAt: Date;
+
   /** Removed destinations are kept for the payouts that used them. */
   @Column({ type: 'timestamptz', precision: 3, nullable: true })
   removedAt: Date | null;

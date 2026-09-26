@@ -37,3 +37,14 @@ export class PayoutDestinationRejectedException extends AppException {
     );
   }
 }
+
+/** New bank accounts wait PAYOUT_DESTINATION_COOLDOWN_MINUTES before payouts. */
+export class PayoutDestinationCoolingOffException extends AppException {
+  constructor(availableAt: Date) {
+    super(
+      'PAYOUT_DESTINATION_COOLING_OFF',
+      `This bank account was added recently and can receive payouts from ${availableAt.toISOString()}`,
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}

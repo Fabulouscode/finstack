@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FeesModule } from '../fees/fees.module';
+import { LimitsModule } from '../limits/limits.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { OutboxModule } from '../outbox/outbox.module';
 import { UsersModule } from '../users/users.module';
@@ -16,6 +17,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
 @Module({
   imports: [
     FeesModule,
+    forwardRef(() => LimitsModule),
     OrganizationsModule,
     TypeOrmModule.forFeature([Transaction]),
     IdempotencyModule,

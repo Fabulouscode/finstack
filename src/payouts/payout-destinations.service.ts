@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, Repository } from 'typeorm';
 import { AuditAction } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import type { CurrencyCode } from '../common/money/currency';
 import { OwnerRef, ownerColumns, ownerWhere } from '../common/owner/owner';
+import { payoutsConfig } from '../config/payouts.config';
+import type { PayoutsConfig } from '../config/payouts.config';
+import { OutboxService } from '../outbox/outbox.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { PaymentProviderError } from '../payment-providers/payment-provider';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
@@ -33,6 +36,8 @@ export class PayoutDestinationsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly providers: PaymentProvidersService,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
+    @Inject(payoutsConfig.KEY) private readonly config: PayoutsConfig,
   ) {}
 
   /**
@@ -77,8 +82,27 @@ export class PayoutDestinationsService {
             accountNumberLast4: input.accountNumber.slice(-4),
             label: input.label ?? null,
             removedAt: null,
+            payoutsAvailableAt: new Date(
+              Date.now() + this.config.destinationCooldownMinutes * 60_000,
+            ),
           }),
         );
+        // Tells the owner (email), so an account they didn't add is noticed.
+        await this.outbox.add(manager, {
+          type: 'payout_destination.added',
+          aggregateType: 'payout_destination',
+          aggregateId: destination.id,
+          payload: {
+            destinationId: destination.id,
+            userId: destination.userId,
+            organizationId: destination.organizationId,
+            accountName: destination.accountName,
+            bankName: destination.bankName,
+            accountNumberLast4: destination.accountNumberLast4,
+            currency: destination.currency,
+            payoutsAvailableAt: destination.payoutsAvailableAt.toISOString(),
+          },
+        });
         await this.audit.record(manager, {
           action: AuditAction.PayoutDestinationAdded,
           organizationId: destination.organizationId,
