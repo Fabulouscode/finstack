@@ -1,10 +1,13 @@
 # FinStack
 
+[![CI](https://github.com/Fabulouscode/finstack/actions/workflows/ci.yml/badge.svg)](https://github.com/Fabulouscode/finstack/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 > **The financial backend foundation for your next fintech product.**
 
 FinStack is an open-source, production-minded **fintech backend starter kit** built with NestJS, TypeScript, PostgreSQL and TypeORM. It provides the hard financial infrastructure — wallets, a double-entry ledger, payments, webhooks, idempotency and reconciliation — so you can focus on your product.
 
-> ⚠️ **Status: early development.** FinStack is a starter kit and learning resource, not a production financial service processing real customer funds.
+> ⚠️ **Status: v0.1, pre-1.0.** FinStack is a starter kit, not a licensed financial service. Before handling real customer funds, review it for your use case, test your providers end to end with their test keys, and meet your regulatory obligations.
 
 ## Principles
 
@@ -678,6 +681,10 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 ## Architecture decisions
 
 See [`docs/adr/`](./docs/adr/).
+
+## Contributing and security
+
+Contributions are welcome: see [CONTRIBUTING.md](./CONTRIBUTING.md). Please report vulnerabilities privately as described in [SECURITY.md](./SECURITY.md). Changes are listed in [CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 
