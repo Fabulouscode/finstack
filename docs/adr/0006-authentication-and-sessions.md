@@ -39,6 +39,7 @@ FinStack needs user authentication that is safe by default for a financial produ
 ## Consequences
 
 - Stolen access tokens expire quickly. Stolen refresh tokens are detected on the victim's next refresh.
-- Instant revocation of access tokens (e.g. on suspension) would need a denylist or per-request user lookup. That's deferred until needed.
+- ~~Instant revocation of access tokens would need a denylist or per-request user lookup.~~ **Updated by ADR 0023:** the guard now loads the account on every request (one primary-key lookup). Suspensions and role changes apply at once, and the role comes from the account, not the token.
+- Only a token that was already *rotated* coming back counts as reuse (it has `replacedById`). Tokens ended by logout or by an admin are just invalid, so they don't raise false security alarms.
 - Registration returns `409` for a taken email, which reveals that the email exists. This is common and accepted here; high-risk products can switch to email-verification-based sign-up.
-- Expired and revoked refresh-token rows accumulate. A cleanup job arrives with the background-jobs module.
+- Expired and revoked refresh-token rows are removed by the maintenance cleanup after 30 days.

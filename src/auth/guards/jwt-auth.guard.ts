@@ -10,7 +10,12 @@ import {
 } from '../../api-keys/api-keys.errors';
 import { ApiKeysService } from '../../api-keys/api-keys.service';
 import { RequestContext } from '../../common/request-context/request-context';
-import { AuthenticationRequiredException } from '../auth.errors';
+import { UserStatus } from '../../users/user.entity';
+import { UsersService } from '../../users/users.service';
+import {
+  AccountSuspendedException,
+  AuthenticationRequiredException,
+} from '../auth.errors';
 import { AuthenticatedRequest } from '../authenticated-user';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { AccessTokenService } from '../tokens/access-token.service';
@@ -26,6 +31,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly accessTokens: AccessTokenService,
     private readonly apiKeys: ApiKeysService,
+    private readonly users: UsersService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -66,12 +72,25 @@ export class JwtAuthGuard implements CanActivate {
       throw new AuthenticationRequiredException();
     }
 
-    const user = await this.accessTokens.verify(token);
-    if (!user) {
+    const claims = await this.accessTokens.verify(token);
+    if (!claims) {
       throw new AuthenticationRequiredException(
         'Access token is invalid or expired',
       );
     }
+    // The token proves who the caller is; the account's current state
+    // decides what they may do. Suspensions and role changes take effect
+    // immediately, not when the token expires.
+    const account = await this.users.findById(claims.id);
+    if (!account) {
+      throw new AuthenticationRequiredException(
+        'Access token is invalid or expired',
+      );
+    }
+    if (account.status !== UserStatus.Active) {
+      throw new AccountSuspendedException();
+    }
+    const user = { id: account.id, role: account.role };
 
     request.user = user;
     RequestContext.setActor({ type: 'user', id: user.id });

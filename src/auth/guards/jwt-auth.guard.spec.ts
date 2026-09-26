@@ -1,7 +1,11 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '../../users/user.entity';
-import { AuthenticationRequiredException } from '../auth.errors';
+import { UserRole, UserStatus } from '../../users/user.entity';
+import type { UsersService } from '../../users/users.service';
+import {
+  AccountSuspendedException,
+  AuthenticationRequiredException,
+} from '../auth.errors';
 import { AuthenticatedRequest } from '../authenticated-user';
 import type { ApiKeyPrincipal } from '../../api-keys/api-key-principal';
 import {
@@ -47,8 +51,10 @@ describe('JwtAuthGuard', () => {
   const accessTokens = { verify } as unknown as AccessTokenService;
   const authenticate = jest.fn<Promise<ApiKeyPrincipal | null>, [string]>();
   const apiKeys = { authenticate } as unknown as ApiKeysService;
+  const findById = jest.fn();
+  const users = { findById } as unknown as UsersService;
   const reflector = new Reflector();
-  const guard = new JwtAuthGuard(reflector, accessTokens, apiKeys);
+  const guard = new JwtAuthGuard(reflector, accessTokens, apiKeys, users);
 
   /** Metadata lookups in the guard: first @Public(), then @AllowApiKey(). */
   const routeMetadata = (
@@ -63,6 +69,8 @@ describe('JwtAuthGuard', () => {
 
   beforeEach(() => {
     verify.mockReset();
+    findById.mockReset();
+    findById.mockResolvedValue({ ...user, status: UserStatus.Active });
     authenticate.mockReset();
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(undefined);
   });
@@ -139,5 +147,35 @@ describe('JwtAuthGuard', () => {
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
     expect(verify).toHaveBeenCalledWith('good');
     expect(request.user).toEqual(user);
+  });
+
+  it('uses the account as it is now: suspended accounts are refused', async () => {
+    verify.mockResolvedValue(user);
+    findById.mockResolvedValue({ ...user, status: UserStatus.Suspended });
+    await expect(
+      guard.canActivate(
+        contextFor({ headers: { authorization: 'Bearer valid.token' } }),
+      ),
+    ).rejects.toThrow(AccountSuspendedException);
+  });
+
+  it('uses the current role, not the one in the token', async () => {
+    verify.mockResolvedValue({ ...user, role: UserRole.Admin });
+    findById.mockResolvedValue({ ...user, status: UserStatus.Active });
+    const request: Partial<AuthenticatedRequest> = {
+      headers: { authorization: 'Bearer valid.token' },
+    };
+    await guard.canActivate(contextFor(request));
+    expect(request.user).toEqual({ id: user.id, role: UserRole.User });
+  });
+
+  it('rejects tokens of deleted accounts', async () => {
+    verify.mockResolvedValue(user);
+    findById.mockResolvedValue(null);
+    await expect(
+      guard.canActivate(
+        contextFor({ headers: { authorization: 'Bearer valid.token' } }),
+      ),
+    ).rejects.toThrow(AuthenticationRequiredException);
   });
 });

@@ -171,4 +171,18 @@ describe('RefreshTokenService (integration)', () => {
     await expect(service.deleteFinished(30)).resolves.toBe(1);
     await expect(tokens.count()).resolves.toBe(2);
   });
+
+  it('treats a logged-out token as invalid, not as reuse', async () => {
+    const session = await service.issue(userId);
+    await service.revoke(session.token);
+
+    await expect(service.rotate(session.token)).rejects.toThrow(
+      InvalidRefreshTokenException,
+    );
+    await expect(
+      dataSource.query(
+        `SELECT 1 FROM audit_logs WHERE action = 'auth.refresh_token_reuse_detected'`,
+      ),
+    ).resolves.toEqual([]);
+  });
 });

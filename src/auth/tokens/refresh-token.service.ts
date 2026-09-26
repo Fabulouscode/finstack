@@ -48,9 +48,10 @@ export class RefreshTokenService {
    *
    * The token row is locked with SELECT ... FOR UPDATE, so concurrent
    * refreshes with the same token are serialised: the first rotates it, and
-   * the second sees it already revoked. Presenting a revoked token means it
-   * was copied, so the whole family is revoked (OAuth 2.0 Security BCP
-   * §4.14). The revocation is committed before the error is raised.
+   * the second sees it already revoked. Presenting a token that was already
+   * rotated means it was copied, so the whole family is revoked (OAuth 2.0
+   * Security BCP §4.14). The revocation is committed before the error is
+   * raised. Tokens ended by logout or an admin are just invalid.
    */
   async rotate(token: string): Promise<RotatedRefreshToken> {
     const outcome = await this.dataSource.transaction(
@@ -67,7 +68,12 @@ export class RefreshTokenService {
         if (!current) {
           return { kind: 'invalid' };
         }
+        if (current.revokedAt !== null && current.replacedById === null) {
+          // Ended by logout or an admin (not by rotation): simply invalid.
+          return { kind: 'invalid' };
+        }
         if (current.revokedAt !== null) {
+          // A rotated token came back: it was copied. End the whole session.
           await this.revokeFamilyWith(manager, current.familyId);
           await this.audit.record(manager, {
             action: AuditAction.RefreshTokenReuseDetected,
