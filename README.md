@@ -74,6 +74,10 @@ Configuration is read from environment variables (and `.env` in development), va
 | `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
 | `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
 | `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `USD:stripe,NGN:paystack` |
+| `DATA_ENCRYPTION_KEY` | dev key | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets such as webhook signing secrets. **Required in production.** |
+| `OUTBOUND_WEBHOOK_MAX_ATTEMPTS` / `_BACKOFF_MS` / `_TIMEOUT_MS` | `10` / `30000` / `10000` | Delivery retries (exponential), first delay, request timeout |
+| `OUTBOUND_WEBHOOK_DISABLE_AFTER_FAILURES` | `20` | Disable an endpoint after this many failed deliveries in a row |
+| `OUTBOUND_WEBHOOK_ALLOW_PRIVATE_URLS` | off in production | Allow endpoints on private/loopback addresses (local development) |
 | `PAYMENT_SETTLEMENT_DELAY_SECONDS` | `0` | Settlement hold: payment funds stay pending this long before they can be spent or paid out |
 | `MOCK_PROVIDER_WEBHOOK_SECRET` | — (required with `mock`) | HMAC secret the mock provider signs webhooks with |
 | `PAYSTACK_SECRET_KEY` | — (required with `paystack`) | `sk_test_…` outside production, `sk_live_…` only in production. Also verifies webhooks. |
@@ -401,6 +405,39 @@ Every day at 02:00 UTC, FinStack compares the previous day's payments and payout
 
 See [ADR 0020](./docs/adr/0020-reconciliation.md).
 
+## Outbound webhooks
+
+Organizations register HTTPS endpoints and receive **signed** event callbacks. Available events: `payment.successful`, `payment.failed`, `payment.funds_available`, `refund.successful`, `refund.failed`, `payout.successful`, `payout.failed`, `payout.reversed`, or `*` for all. Deliveries retry with exponential backoff, and every attempt is logged. Failed deliveries can be redelivered, and an endpoint that keeps failing is disabled automatically. Managing endpoints requires `webhooks:manage` (owner, admin).
+
+| Endpoint | Description |
+| --- | --- |
+| `POST` / `GET /v1/organizations/:id/webhook-endpoints` | Register (the signing secret is shown once) or list endpoints |
+| `PATCH` / `DELETE …/webhook-endpoints/:endpointId` | Change the URL or events, disable or re-enable, delete |
+| `POST …/:endpointId/rotate-secret` | New secret; the old one keeps signing during a grace period |
+| `POST …/:endpointId/test` | Send a `webhook.test` event |
+| `GET …/:endpointId/deliveries`, `POST …/deliveries/:deliveryId/redeliver` | Delivery log and redelivery |
+
+**Verifying a request** (Node.js). Use the raw body, check the signature, reject stale timestamps, and dedupe on the event `id`:
+
+```js
+const crypto = require('node:crypto');
+
+function verify(header, rawBody, secret, toleranceSeconds = 300) {
+  const pairs = header.split(',').map((part) => part.split('='));
+  const t = Number(pairs.find(([key]) => key === 't')?.[1]);
+  if (!t || Math.abs(Date.now() / 1000 - t) > toleranceSeconds) return false;
+  const expected = crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest();
+  return pairs
+    .filter(([key]) => key === 'v1')
+    .some(([, hex]) => {
+      const given = Buffer.from(hex, 'hex');
+      return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+    });
+}
+```
+
+Signing secrets are stored encrypted (`DATA_ENCRYPTION_KEY`), and URLs that point at private or internal addresses are refused in production. See [ADR 0021](./docs/adr/0021-outbound-webhooks.md).
+
 ## Events and background jobs
 
 Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
@@ -489,7 +526,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation): admin, notifications, observability
+- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation, outbound webhooks): email notifications, admin, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

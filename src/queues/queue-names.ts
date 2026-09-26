@@ -4,6 +4,8 @@ export const QueueName = {
   Webhooks: 'webhooks',
   /** Delivers domain events (payment.successful, ...) to their handlers. */
   DomainEvents: 'domain-events',
+  /** Sends signed event callbacks to customers' webhook endpoints. */
+  OutboundWebhooks: 'outbound-webhooks',
   /** Periodic housekeeping (expired keys, old outbox rows). */
   Maintenance: 'maintenance',
 } as const;
