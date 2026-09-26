@@ -19,6 +19,18 @@ import { ConfigValidationError, validateConfig } from './validate-config';
 export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack', 'stripe'] as const;
 export type PaymentProviderName = (typeof KNOWN_PAYMENT_PROVIDERS)[number];
 
+/**
+ * Currencies FinStack processes through one provider only. When that
+ * provider is enabled, the currency is routed to it automatically, and a
+ * route to any other real provider is refused. (The mock provider, for
+ * development only, may still charge them.)
+ */
+export const CURRENCY_PROVIDER_POLICY: Readonly<
+  Record<string, PaymentProviderName>
+> = {
+  USD: 'stripe',
+};
+
 const toList = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string'
     ? value
@@ -201,6 +213,17 @@ export const paymentsConfig = registerAs('payments', () => {
       violations.push(`PAYMENT_CURRENCY_ROUTES: ${currency} is routed twice`);
     } else {
       currencyRoutes[currency] = provider as PaymentProviderName;
+    }
+  }
+
+  for (const [currency, required] of Object.entries(CURRENCY_PROVIDER_POLICY)) {
+    const routed = currencyRoutes[currency];
+    if (routed && routed !== required && routed !== 'mock') {
+      violations.push(
+        `PAYMENT_CURRENCY_ROUTES: ${currency} payments go through ${required} only`,
+      );
+    } else if (!routed && enabled.includes(required)) {
+      currencyRoutes[currency] = required;
     }
   }
 

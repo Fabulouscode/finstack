@@ -73,8 +73,10 @@ Configuration is read from environment variables (and `.env` in development), va
 | `IDEMPOTENCY_LOCK_TIMEOUT_SECONDS` | `60` | After this, an in-progress key may be taken over by a retry |
 | `PAYMENT_PROVIDERS` | `mock` | Enabled providers, comma-separated. `mock` is refused in production. |
 | `DEFAULT_PAYMENT_PROVIDER` | first enabled | Provider used when a request doesn't name one |
-| `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `USD:stripe,NGN:paystack` |
+| `PAYMENT_CURRENCY_ROUTES` | — | Pin currencies to providers, e.g. `NGN:paystack` (USD always goes to Stripe) |
 | `EMAIL_DRIVER` / `EMAIL_FROM` / `SMTP_URL` | `log` / `FinStack <no-reply@finstack.local>` / — | Notification emails: `log` prints them; `smtp` sends via `SMTP_URL` |
+| `LOG_FORMAT` / `LOG_LEVEL` | `json` in production, else `pretty` / `info` | Log output |
+| `METRICS_ENABLED` / `METRICS_TOKEN` | `true` / — | Prometheus `/metrics`; the token is required to expose it in production |
 | `DATA_ENCRYPTION_KEY` | dev key | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets such as webhook signing secrets. **Required in production.** |
 | `OUTBOUND_WEBHOOK_MAX_ATTEMPTS` / `_BACKOFF_MS` / `_TIMEOUT_MS` | `10` / `30000` / `10000` | Delivery retries (exponential), first delay, request timeout |
 | `OUTBOUND_WEBHOOK_DISABLE_AFTER_FAILURES` | `20` | Disable an endpoint after this many failed deliveries in a row |
@@ -338,14 +340,23 @@ curl -X POST localhost:3000/v1/dev/mock-provider/payments/<providerReference>/co
 | Provider | Currencies | Webhook URL | Notes |
 | --- | --- | --- | --- |
 | `mock` | all supported | `/v1/webhooks/mock` | Development only; refused in production |
-| `paystack` | NGN, USD, GHS, ZAR, KES | `/v1/webhooks/paystack` | Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. |
-| `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
+| `paystack` | NGN, GHS, ZAR, KES | `/v1/webhooks/paystack` | Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. **USD is never charged through Paystack.** |
+| `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | **The only provider for USD** (routed automatically when enabled). Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
 
-**Routing by currency.** `PAYMENT_CURRENCY_ROUTES` pins currencies to providers, e.g. `USD:stripe,NGN:paystack`:
+**USD goes through Stripe only.** This is enforced in code, not left to configuration:
+
+- Paystack is never offered USD.
+- With Stripe enabled, USD payments are routed to Stripe automatically, and a route sending USD elsewhere is refused at startup.
+- Without Stripe, USD payments are refused. USD wallets can still receive NGN (or other) payments, converted at a locked quote.
+- The mock provider may charge USD, for local development only.
+
+**Routing by currency.** `PAYMENT_CURRENCY_ROUTES` pins other currencies to providers, e.g. `NGN:paystack`:
 
 - A payment in a routed currency always uses that provider. Asking for another returns `422 PROVIDER_NOT_ALLOWED_FOR_CURRENCY`.
 - Other currencies use the requested provider or `DEFAULT_PAYMENT_PROVIDER`.
 - The app refuses to start if a route points to a provider that isn't enabled or can't charge that currency.
+
+See [ADR 0025](./docs/adr/0025-currency-routing.md).
 
 A provider is one class implementing `PaymentProvider` (`src/payment-providers/payment-provider.ts`): initialise, verify, refund, verify the webhook signature, parse the event. See `src/payment-providers/paystack/` for a complete adapter. Provider errors are classified for you by `JsonHttpClient`: timeouts, 5xx and 429 are retryable (the payment stays `pending`), and other 4xx responses are rejections.
 
@@ -463,6 +474,42 @@ Platform admins (`role = admin`) can find accounts, see their money, and act. Ev
 
 Other admin endpoints live with their features: refunds, payment releases, payouts, reconciliation, webhook events, FX rates and audit logs. See [ADR 0023](./docs/adr/0023-admin-tooling.md).
 
+## Observability
+
+- **Logs.** Set `LOG_FORMAT=json` (the production default) for one JSON object per line, with `requestId`, `traceId` and `actor` on everything logged during a request, plus an access-log line per request (route, status, duration). `LOG_LEVEL` is `debug`, `info`, `warn` or `error`.
+- **Metrics.** Prometheus at `GET /metrics`. It covers:
+  - HTTP rate and latency by route template
+  - business events (`finstack_domain_events_total{type="payment.successful"}` and more)
+  - provider webhooks, outbound delivery attempts
+  - queue depth, outbox backlog, and Node.js process metrics
+  
+  Set `METRICS_TOKEN` and scrape with `Authorization: Bearer <token>`. In production, `/metrics` stays off until a token is set.
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: finstack
+    metrics_path: /metrics
+    authorization: { credentials: <METRICS_TOKEN> }
+    static_configs: [{ targets: ['finstack:3000'] }]
+```
+
+Good first alerts:
+- `rate(finstack_http_requests_total{status=~"5.."}[5m])`
+- `finstack_queue_jobs{state="failed"}`
+- `finstack_outbox_pending_events > 100`
+- the ratio of `payment.failed` to `payment.successful`
+
+- **Tracing.** An incoming W3C `traceparent` is honoured, so logs share the caller's trace id. For full traces (HTTP, PostgreSQL, Redis, BullMQ), add OpenTelemetry without code changes:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/auto-instrumentations-node
+OTEL_SERVICE_NAME=finstack OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318 \
+  node --require @opentelemetry/auto-instrumentations-node/register dist/main.js
+```
+
+See [ADR 0024](./docs/adr/0024-observability.md).
+
 ## Events and background jobs
 
 Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
@@ -551,7 +598,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling): observability
+- [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

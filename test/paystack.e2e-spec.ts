@@ -125,7 +125,7 @@ describe('Paystack provider (e2e, fake Paystack API)', () => {
 
   it('rejects webhooks not signed with the Paystack secret', async () => {
     const payment = (
-      await startPayment({ amount: 5_000, currency: 'USD' }).expect(201)
+      await startPayment({ amount: 1_550_000, currency: 'NGN' }).expect(201)
     ).body as PaymentResponseDto;
     const { rawBody } = paystack.complete(payment.reference, 'success');
 
@@ -137,14 +137,14 @@ describe('Paystack provider (e2e, fake Paystack API)', () => {
     paystack.failNext(503);
 
     const outage = await startPayment(
-      { amount: 5_000, currency: 'USD' },
+      { amount: 1_550_000, currency: 'NGN' },
       'ps-outage',
     ).expect(503);
     expect(outage.body).toMatchObject({ code: 'PAYMENT_PROVIDER_UNAVAILABLE' });
 
     const retry = (
       await startPayment(
-        { amount: 5_000, currency: 'USD' },
+        { amount: 1_550_000, currency: 'NGN' },
         'ps-outage',
       ).expect(201)
     ).body as PaymentResponseDto;
@@ -155,13 +155,22 @@ describe('Paystack provider (e2e, fake Paystack API)', () => {
     paystack.failNext(400);
 
     const response = await startPayment({
-      amount: 5_000,
-      currency: 'USD',
+      amount: 1_550_000,
+      currency: 'NGN',
     }).expect(201);
     expect(response.body).toMatchObject({
       status: 'failed',
       failureCode: 'PROVIDER_REJECTED',
     });
+  });
+
+  it('never charges USD: FinStack processes USD through Stripe only', async () => {
+    const response = await startPayment({ amount: 5_000, currency: 'USD' });
+    expect(response.status).toBe(422);
+    expect(response.body).toMatchObject({
+      code: 'CURRENCY_NOT_SUPPORTED_BY_PROVIDER',
+    });
+    expect(paystack.requests).toHaveLength(0);
   });
 
   it('refuses currencies Paystack cannot charge before creating anything', async () => {

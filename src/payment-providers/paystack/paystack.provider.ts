@@ -142,7 +142,11 @@ function mapRefundStatus(status: string): ProviderPaymentStatus {
 @Injectable()
 export class PaystackProvider implements PaymentProvider {
   readonly name = 'paystack';
-  readonly supportedCurrencies = ['NGN', 'USD', 'GHS', 'ZAR', 'KES'] as const;
+  /**
+   * Paystack can also charge USD, but FinStack processes USD through Stripe
+   * only (see CURRENCY_PROVIDER_POLICY), so it's not offered here.
+   */
+  readonly supportedCurrencies = ['NGN', 'GHS', 'ZAR', 'KES'] as const;
 
   /** Paystack Transfers (https://paystack.com/docs/transfers). */
   readonly payouts: PayoutCapability = {

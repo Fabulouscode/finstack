@@ -166,6 +166,38 @@ describe('paymentsConfig', () => {
     });
   });
 
+  describe('USD goes through Stripe only', () => {
+    const both = {
+      PAYMENT_PROVIDERS: 'paystack,stripe',
+      DEFAULT_PAYMENT_PROVIDER: 'paystack',
+      PAYSTACK_SECRET_KEY: 'sk_test_abc123',
+      STRIPE_SECRET_KEY: 'sk_test_abc123',
+      STRIPE_WEBHOOK_SECRET: 'whsec_abc123',
+      STRIPE_SUCCESS_URL: 'https://app.example.com/paid',
+      STRIPE_CANCEL_URL: 'https://app.example.com/cancelled',
+    };
+
+    it('routes USD to Stripe automatically when Stripe is enabled', () => {
+      Object.assign(process.env, both);
+      expect(paymentsConfig().currencyRoutes).toEqual({ USD: 'stripe' });
+    });
+
+    it('refuses a route sending USD to another provider', () => {
+      Object.assign(process.env, both, {
+        PAYMENT_CURRENCY_ROUTES: 'USD:paystack',
+      });
+      expect(() => paymentsConfig()).toThrow(
+        /USD payments go through stripe only/,
+      );
+    });
+
+    it('adds no route while Stripe is not enabled', () => {
+      process.env.PAYMENT_PROVIDERS = 'mock,paystack';
+      process.env.PAYSTACK_SECRET_KEY = 'sk_test_abc123';
+      expect(paymentsConfig().currencyRoutes).toEqual({});
+    });
+  });
+
   it.each([
     ['PAYMENT_PROVIDERS', 'paypal'],
     ['PAYMENT_PROVIDERS', ''],
