@@ -282,6 +282,10 @@ export class WebhooksService {
     return this.events.findOneByOrFail({ id: webhookEventId });
   }
 
+  countByStatus(status: WebhookEventStatus): Promise<number> {
+    return this.events.countBy({ status });
+  }
+
   list(options: {
     status?: WebhookEventStatus;
     limit: number;

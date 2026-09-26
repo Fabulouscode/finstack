@@ -175,6 +175,21 @@ export class PayoutsService {
     return { payout, transaction, destination };
   }
 
+  /** Payouts still processing, and since when (admin overview). */
+  async processingStats(): Promise<{ count: number; oldest: Date | null }> {
+    const row = await this.payouts
+      .createQueryBuilder('payout')
+      .select('COUNT(*)::int', 'count')
+      .addSelect('MIN(payout.createdAt)', 'oldest')
+      .where(
+        this.transactions.statusIn('payout.transaction_id', [
+          TransactionStatus.Processing,
+        ]),
+      )
+      .getRawOne<{ count: number; oldest: Date | null }>();
+    return { count: row?.count ?? 0, oldest: row?.oldest ?? null };
+  }
+
   /** Payouts routed to `provider` and created in the range (reconciliation). */
   listForProvider(provider: string, range: TimeRange): Promise<Payout[]> {
     return this.payouts

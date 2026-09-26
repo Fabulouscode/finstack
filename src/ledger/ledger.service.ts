@@ -344,6 +344,26 @@ export class LedgerService {
    * Sum of debit-normal vs credit-normal balances per currency. In a
    * consistent double-entry ledger the two sides are always equal.
    */
+  /**
+   * Balances of the accounts selected by `accountIdSql` (a SELECT of ids,
+   * provided by the module that owns them), summed per currency.
+   */
+  async sumBalancesByCurrency(
+    accountIdSql: string,
+  ): Promise<Record<string, bigint>> {
+    const rows = await this.dataSource.query<
+      { currency: string; total: string }[]
+    >(
+      `SELECT currency, SUM(balance) AS total
+         FROM ledger_accounts
+        WHERE id IN (${accountIdSql})
+        GROUP BY currency`,
+    );
+    return Object.fromEntries(
+      rows.map((row) => [row.currency, BigInt(row.total)]),
+    );
+  }
+
   /** Every currency that has ledger accounts. */
   async currencies(): Promise<string[]> {
     const rows = await this.dataSource.query<{ currency: string }[]>(

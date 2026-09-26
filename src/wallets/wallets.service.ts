@@ -680,8 +680,51 @@ export class WalletsService {
     ]);
   }
 
-  async setStatus(walletId: string, status: WalletStatus): Promise<void> {
-    await this.wallets.update({ id: walletId }, { status });
+  /** Frozen wallets can't send money; held funds can still be released. */
+  async setStatus(
+    walletId: string,
+    status: WalletStatus,
+    manager?: EntityManager,
+  ): Promise<void> {
+    await (manager ?? this.wallets.manager).update(
+      Wallet,
+      { id: walletId },
+      { status },
+    );
+  }
+
+  /** A wallet with balances, by id; no ownership check (admin use). */
+  async getWithBalances(walletId: string): Promise<WalletWithBalances> {
+    return this.withBalance(await this.getWallet(walletId));
+  }
+
+  /** What FinStack owes its wallet holders, per currency and balance. */
+  async balanceTotals(): Promise<
+    Record<string, { available: bigint; pending: bigint; reserved: bigint }>
+  > {
+    const [available, pending, reserved] = await Promise.all(
+      (['available', 'pending', 'reserved'] as const).map((balance) =>
+        this.ledger.sumBalancesByCurrency(
+          `SELECT ${balance}_account_id FROM wallets`,
+        ),
+      ),
+    );
+    const totals: Record<
+      string,
+      { available: bigint; pending: bigint; reserved: bigint }
+    > = {};
+    for (const currency of new Set([
+      ...Object.keys(available ?? {}),
+      ...Object.keys(pending ?? {}),
+      ...Object.keys(reserved ?? {}),
+    ])) {
+      totals[currency] = {
+        available: available?.[currency] ?? 0n,
+        pending: pending?.[currency] ?? 0n,
+        reserved: reserved?.[currency] ?? 0n,
+      };
+    }
+    return totals;
   }
 
   // ---- Internals --------------------------------------------------------------

@@ -314,6 +314,10 @@ export class ReconciliationService {
     };
   }
 
+  countOpenItems(): Promise<number> {
+    return this.items.countBy({ status: ReconciliationItemStatus.Open });
+  }
+
   /** Marks an open item handled, with what was done. Audited. */
   async resolve(
     itemId: string,

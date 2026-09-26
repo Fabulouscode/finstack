@@ -115,6 +115,21 @@ export class RefundsService {
     return { refund, transaction };
   }
 
+  /** Refunds still processing, and since when (admin overview). */
+  async processingStats(): Promise<{ count: number; oldest: Date | null }> {
+    const row = await this.refunds
+      .createQueryBuilder('refund')
+      .select('COUNT(*)::int', 'count')
+      .addSelect('MIN(refund.createdAt)', 'oldest')
+      .where(
+        this.transactions.statusIn('refund.transaction_id', [
+          TransactionStatus.Processing,
+        ]),
+      )
+      .getRawOne<{ count: number; oldest: Date | null }>();
+    return { count: row?.count ?? 0, oldest: row?.oldest ?? null };
+  }
+
   /** Re-asks the provider about a refund still processing (safe to repeat). */
   async retry(refundId: string): Promise<RefundView> {
     const { refund, transaction } = await this.view(refundId);

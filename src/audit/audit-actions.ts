@@ -1,6 +1,10 @@
 /** Every audited action, so the vocabulary stays consistent and discoverable. */
 export const AuditAction = {
+  UserSuspended: 'user.suspended',
+  UserReactivated: 'user.reactivated',
   OrganizationCreated: 'organization.created',
+  OrganizationSuspended: 'organization.suspended',
+  OrganizationReactivated: 'organization.reactivated',
   OrganizationRenamed: 'organization.renamed',
   OwnershipTransferred: 'organization.ownership_transferred',
   MemberAdded: 'member.added',
@@ -9,6 +13,8 @@ export const AuditAction = {
   ApiKeyCreated: 'api_key.created',
   ApiKeyRevoked: 'api_key.revoked',
   WalletCreated: 'wallet.created',
+  WalletFrozen: 'wallet.frozen',
+  WalletUnfrozen: 'wallet.unfrozen',
   WebhookEndpointCreated: 'webhook_endpoint.created',
   WebhookEndpointUpdated: 'webhook_endpoint.updated',
   WebhookEndpointDeleted: 'webhook_endpoint.deleted',

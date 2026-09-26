@@ -1,3 +1,4 @@
+import { AdminModule } from './admin/admin.module';
 import { AuditApiModule } from './audit/audit-api.module';
 import { AuditModule } from './audit/audit.module';
 import { PayoutsModule } from './payouts/payouts.module';
@@ -41,6 +42,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     RefundsModule,
     PayoutsModule,
     ReconciliationModule,
+    AdminModule,
     WebhooksModule,
     EventsModule,
     MaintenanceModule,

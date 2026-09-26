@@ -448,6 +448,21 @@ Users are emailed about their money: payments received (including when held fund
 
 See [ADR 0022](./docs/adr/0022-email-notifications.md).
 
+## Admin tooling
+
+Platform admins (`role = admin`) can find accounts, see their money, and act. Every action requires a `reason` and is audited.
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /v1/admin/overview` | Users and organizations by status, what's owed to wallet holders per currency, and what needs attention (stuck payouts/refunds, open reconciliation items, failed webhooks) |
+| `GET /v1/admin/users?email=&status=`, `GET …/users/:id` | Search users; a user with their wallets and organizations |
+| `POST /v1/admin/users/:id/suspend` · `/reactivate` | Suspension takes effect immediately (even for issued tokens) and ends all sessions |
+| `GET /v1/admin/organizations?name=&status=`, `GET …/organizations/:id` | Search organizations; members and wallets |
+| `POST /v1/admin/organizations/:id/suspend` · `/reactivate` | Read-only for members; API keys stop working |
+| `GET /v1/admin/wallets/:id`, `POST …/freeze` · `/unfreeze` | A wallet with its owner; freezing stops money leaving it |
+
+Other admin endpoints live with their features: refunds, payment releases, payouts, reconciliation, webhook events, FX rates and audit logs. See [ADR 0023](./docs/adr/0023-admin-tooling.md).
+
 ## Events and background jobs
 
 Money movements record domain events (`payment.successful`, `payment.failed`, `refund.successful`, `refund.failed`, `transfer.completed`) in a **transactional outbox**: the same database transaction as the change itself, so an event exists if and only if the money moved. A relay publishes them to **BullMQ** (Redis), and workers handle them at least once.
@@ -536,7 +551,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
-- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications): admin tooling, observability
+- [ ] **Phase 3 — Operations** (done: audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling): observability
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions

@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import type { Cursor } from '../common/pagination/cursor';
 import { AuditAction } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { User } from '../users/user.entity';
-import { UsersService } from '../users/users.service';
+import { escapeLike, UsersService } from '../users/users.service';
 import { Membership } from './membership.entity';
 import { OrgRole } from './organization-permissions';
-import { Organization } from './organization.entity';
+import { Organization, OrganizationStatus } from './organization.entity';
 import {
   MemberAlreadyExistsException,
   MemberNotFoundException,
@@ -85,6 +86,68 @@ export class OrganizationsService {
       throw new OrganizationNotFoundException();
     }
     return organization;
+  }
+
+  /** Admin search: name contains `name`, newest first, keyset-paginated. */
+  async search(
+    filter: { name?: string; status?: OrganizationStatus },
+    options: { limit: number; before?: Cursor },
+  ): Promise<{ organizations: Organization[]; next: Cursor | null }> {
+    const query = this.organizations
+      .createQueryBuilder('org')
+      .orderBy('org.createdAt', 'DESC')
+      .addOrderBy('org.id', 'DESC')
+      .limit(options.limit + 1);
+    if (filter.name) {
+      query.andWhere('org.name ILIKE :name', {
+        name: `%${escapeLike(filter.name)}%`,
+      });
+    }
+    if (filter.status) {
+      query.andWhere('org.status = :status', { status: filter.status });
+    }
+    if (options.before) {
+      query.andWhere(
+        '(org.createdAt, org.id) < (:beforeCreatedAt, :beforeId)',
+        {
+          beforeCreatedAt: options.before.createdAt,
+          beforeId: options.before.id,
+        },
+      );
+    }
+    const rows = await query.getMany();
+    const organizations = rows.slice(0, options.limit);
+    const last = organizations.at(-1);
+    return {
+      organizations,
+      next:
+        rows.length > options.limit && last
+          ? { createdAt: last.createdAt, id: last.id }
+          : null,
+    };
+  }
+
+  /** Suspended organizations are read-only and their API keys stop working. */
+  async setStatus(
+    id: string,
+    status: OrganizationStatus,
+    manager?: EntityManager,
+  ): Promise<void> {
+    await (manager ?? this.organizations.manager).update(
+      Organization,
+      { id },
+      { status },
+    );
+  }
+
+  async countByStatus(): Promise<Record<string, number>> {
+    const rows = await this.organizations
+      .createQueryBuilder('org')
+      .select('org.status', 'status')
+      .addSelect('COUNT(*)::int', 'count')
+      .groupBy('org.status')
+      .getRawMany<{ status: string; count: number }>();
+    return Object.fromEntries(rows.map((row) => [row.status, row.count]));
   }
 
   findMembership(

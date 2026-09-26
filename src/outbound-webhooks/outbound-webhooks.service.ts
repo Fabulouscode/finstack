@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, IsNull, MoreThan, Repository } from 'typeorm';
 import { AuditAction } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { SecretBox } from '../common/crypto/secret-box';
@@ -218,6 +218,21 @@ export class OutboundWebhooksService {
       });
     });
     return { endpoint: await this.get(organizationId, endpointId), secret };
+  }
+
+  /** For the admin overview. */
+  async stats(): Promise<{
+    failedDeliveriesLast24h: number;
+    disabledEndpoints: number;
+  }> {
+    const [failedDeliveriesLast24h, disabledEndpoints] = await Promise.all([
+      this.deliveries.countBy({
+        status: WebhookDeliveryStatus.Failed,
+        createdAt: MoreThan(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+      }),
+      this.endpoints.countBy({ enabled: false, deletedAt: IsNull() }),
+    ]);
+    return { failedDeliveriesLast24h, disabledEndpoints };
   }
 
   // ---- Deliveries ---------------------------------------------------------------
