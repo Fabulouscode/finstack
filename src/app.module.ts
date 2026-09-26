@@ -1,4 +1,5 @@
 import { AdminModule } from './admin/admin.module';
+import { SandboxModule } from './sandbox/sandbox.module';
 import { AuditApiModule } from './audit/audit-api.module';
 import { AuditModule } from './audit/audit.module';
 import { ObservabilityModule } from './observability/observability.module';
@@ -49,6 +50,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     PayoutsModule,
     ReconciliationModule,
     AdminModule,
+    SandboxModule,
     WebhooksModule,
     EventsModule,
     MaintenanceModule,

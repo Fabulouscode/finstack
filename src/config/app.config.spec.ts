@@ -9,6 +9,7 @@ describe('appConfig', () => {
     delete process.env.NODE_ENV;
     delete process.env.PORT;
     delete process.env.SWAGGER_ENABLED;
+    delete process.env.SANDBOX_MODE;
   });
 
   afterAll(() => {
@@ -20,6 +21,8 @@ describe('appConfig', () => {
       environment: Environment.Development,
       port: 3000,
       isProduction: false,
+      isLive: false,
+      sandbox: false,
       swaggerEnabled: true,
     });
   });
@@ -32,6 +35,8 @@ describe('appConfig', () => {
       environment: Environment.Production,
       port: 8080,
       isProduction: true,
+      isLive: true,
+      sandbox: false,
       swaggerEnabled: false,
     });
   });
@@ -44,6 +49,16 @@ describe('appConfig', () => {
     process.env.NODE_ENV = 'development';
     process.env.SWAGGER_ENABLED = 'false';
     expect(appConfig().swaggerEnabled).toBe(false);
+  });
+
+  it('is never live in a sandbox, even in production', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.SANDBOX_MODE = 'true';
+    expect(appConfig()).toMatchObject({
+      isProduction: true,
+      isLive: false,
+      sandbox: true,
+    });
   });
 
   it.each([

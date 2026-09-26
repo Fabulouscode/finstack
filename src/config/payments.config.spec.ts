@@ -166,6 +166,26 @@ describe('paymentsConfig', () => {
     });
   });
 
+  describe('sandbox mode', () => {
+    beforeEach(() => {
+      process.env.NODE_ENV = 'production';
+      process.env.SANDBOX_MODE = 'true';
+    });
+
+    it('allows the mock provider in a production sandbox', () => {
+      expect(paymentsConfig().enabledProviders).toEqual(['mock']);
+    });
+
+    it('allows test provider keys and refuses live ones', () => {
+      process.env.PAYMENT_PROVIDERS = 'mock,paystack';
+      process.env.PAYSTACK_SECRET_KEY = 'sk_test_abc123';
+      expect(paymentsConfig().enabledProviders).toEqual(['mock', 'paystack']);
+
+      process.env.PAYSTACK_SECRET_KEY = 'sk_live_abc123';
+      expect(() => paymentsConfig()).toThrow(/never in a sandbox/);
+    });
+  });
+
   describe('USD goes through Stripe only', () => {
     const both = {
       PAYMENT_PROVIDERS: 'paystack,stripe',

@@ -14,6 +14,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../common/money/currency';
+import { isSandboxMode } from './app.config';
 import { ConfigValidationError, validateConfig } from './validate-config';
 
 export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack', 'stripe'] as const;
@@ -166,10 +167,12 @@ export const paymentsConfig = registerAs('payments', () => {
       'DEFAULT_PAYMENT_PROVIDER must be one of PAYMENT_PROVIDERS',
     );
   }
+  // Live: real money can move (production, and not a sandbox deployment).
+  const live = process.env.NODE_ENV === 'production' && !isSandboxMode();
   if (enabled.includes('mock')) {
-    if (process.env.NODE_ENV === 'production') {
+    if (live) {
       violations.push(
-        'PAYMENT_PROVIDERS: the mock provider must not be enabled in production',
+        'PAYMENT_PROVIDERS: the mock provider must not be enabled in production (unless SANDBOX_MODE=true)',
       );
     }
     if (!env.MOCK_PROVIDER_WEBHOOK_SECRET) {
@@ -180,19 +183,18 @@ export const paymentsConfig = registerAs('payments', () => {
   }
   if (enabled.includes('paystack')) {
     const key = env.PAYSTACK_SECRET_KEY;
-    const production = process.env.NODE_ENV === 'production';
     if (!key) {
       violations.push(
         'PAYSTACK_SECRET_KEY is required when Paystack is enabled',
       );
-    } else if (production && key.startsWith('sk_test_')) {
+    } else if (live && key.startsWith('sk_test_')) {
       violations.push(
         'PAYSTACK_SECRET_KEY: a test key must not be used in production',
       );
-    } else if (!production && key.startsWith('sk_live_')) {
-      // Guard against real charges from a laptop or CI.
+    } else if (!live && key.startsWith('sk_live_')) {
+      // Guard against real charges from a laptop, CI or a sandbox.
       violations.push(
-        'PAYSTACK_SECRET_KEY: a live key may only be used in production',
+        'PAYSTACK_SECRET_KEY: a live key may only be used in production, never in a sandbox',
       );
     }
   }
@@ -229,16 +231,15 @@ export const paymentsConfig = registerAs('payments', () => {
 
   if (enabled.includes('stripe')) {
     const key = env.STRIPE_SECRET_KEY;
-    const production = process.env.NODE_ENV === 'production';
     if (!key) {
       violations.push('STRIPE_SECRET_KEY is required when Stripe is enabled');
-    } else if (production && key.includes('_test_')) {
+    } else if (live && key.includes('_test_')) {
       violations.push(
         'STRIPE_SECRET_KEY: a test key must not be used in production',
       );
-    } else if (!production && key.includes('_live_')) {
+    } else if (!live && key.includes('_live_')) {
       violations.push(
-        'STRIPE_SECRET_KEY: a live key may only be used in production',
+        'STRIPE_SECRET_KEY: a live key may only be used in production, never in a sandbox',
       );
     }
     if (!env.STRIPE_WEBHOOK_SECRET) {

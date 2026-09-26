@@ -77,6 +77,7 @@ Configuration is read from environment variables (and `.env` in development), va
 | `EMAIL_DRIVER` / `EMAIL_FROM` / `SMTP_URL` | `log` / `FinStack <no-reply@finstack.local>` / — | Notification emails: `log` prints them; `smtp` sends via `SMTP_URL` |
 | `LOG_FORMAT` / `LOG_LEVEL` | `json` in production, else `pretty` / `info` | Log output |
 | `METRICS_ENABLED` / `METRICS_TOKEN` | `true` / — | Prometheus `/metrics`; the token is required to expose it in production |
+| `SANDBOX_MODE` | `false` | A sandbox deployment: simulated money only (mock provider allowed in production, `fsk_test_` keys, live provider keys refused) |
 | `DATA_ENCRYPTION_KEY` | dev key | 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored secrets such as webhook signing secrets. **Required in production.** |
 | `OUTBOUND_WEBHOOK_MAX_ATTEMPTS` / `_BACKOFF_MS` / `_TIMEOUT_MS` | `10` / `30000` / `10000` | Delivery retries (exponential), first delay, request timeout |
 | `OUTBOUND_WEBHOOK_DISABLE_AFTER_FAILURES` | `20` | Disable an endpoint after this many failed deliveries in a row |
@@ -317,7 +318,7 @@ Transactions move through explicit states (`pending → processing → successfu
 | `GET /v1/payments/:id` | Bearer | Payment status (and the FX conversion, if any) |
 | `POST /v1/payments/:id/verify` | Bearer | Ask the provider and settle (e.g. after the customer returns from checkout) |
 | `POST /v1/webhooks/:provider` | Signature | Provider callbacks (`mock`, `paystack`, `stripe`) |
-| `POST /v1/dev/mock-provider/payments/:providerReference/complete` | Bearer | **Dev only:** finish a mock checkout (sends a signed webhook) |
+| `POST /v1/sandbox/payments/:id/complete` | Bearer | **Sandbox/dev only:** finish one of your mock checkouts (sends a signed webhook) |
 
 **Flow:** the crediting rule picks the wallet (locking an FX quote if the currencies differ) → the provider returns a checkout URL → the customer pays → the provider's **signed** webhook arrives → FinStack **re-checks the payment with the provider** and compares the amount → one database transaction credits the wallet (converting if needed), posts the ledger and marks the transaction `successful`.
 
@@ -332,7 +333,7 @@ curl -X POST localhost:3000/v1/payments -H "Authorization: Bearer <token>" \
   -d '{"amount":1550000,"currency":"NGN"}'
 
 # 2. "Pay" at the mock checkout (sends a signed webhook through the real pipeline)
-curl -X POST localhost:3000/v1/dev/mock-provider/payments/<providerReference>/complete \
+curl -X POST localhost:3000/v1/sandbox/payments/<paymentId>/complete \
   -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d '{"outcome":"successful"}'
 ```
 
@@ -366,6 +367,26 @@ The Paystack and Stripe adapters are tested against local fakes of each API (`te
 ### Settlement holds
 
 Set `PAYMENT_SETTLEMENT_DELAY_SECONDS` and successful payments land in the wallet's **pending** balance. After the delay, a worker moves them to available (checked every minute). Until then they can't be transferred or paid out. Payments show `fundsAvailableAt` and `heldAmount`. Admins can end a hold early with `POST /v1/admin/payments/:id/release` (audited). A refund of a held payment is taken from its pending credit. See [ADR 0019](./docs/adr/0019-settlement-holds.md).
+
+## Sandbox
+
+Run a separate deployment with `SANDBOX_MODE=true` (for example `sandbox-api.yourcompany.com`) where integrators build against simulated money:
+
+- The mock provider is allowed even with `NODE_ENV=production`. Live provider keys are refused; test keys (`sk_test_…`) are fine.
+- API keys are issued as `fsk_test_…`, and every response carries `FinStack-Mode: sandbox`.
+- Production requirements still apply (for example `DATA_ENCRYPTION_KEY`), since it's a real deployment with real API keys and webhook secrets.
+
+**Simulation API**, for users at `/v1/sandbox/…` and organizations at `/v1/organizations/:id/sandbox/…` (API keys allowed). It also works in development, and it's `404` wherever the mock provider is off:
+
+| Endpoint | What it simulates |
+| --- | --- |
+| `POST …/wallets/fund` `{ "amount": 100000 }` | Test money: a mock payment, paid at once |
+| `POST …/payments/:id/complete` `{ "outcome": "successful" \| "failed", "collectedAmount"? }` | The customer paying, failing, or the provider collecting a different amount |
+| `POST …/payouts/:id/complete` `{ "outcome": "successful" \| "failed" \| "reversed" }` | The bank completing, failing or returning a payout |
+
+Each simulation goes through the **real pipeline**: a signed webhook is received, stored, processed and turned into events (and your own outbound webhooks). Only your own payments and payouts can be simulated.
+
+**Test bank accounts.** Payouts to account numbers ending in `0001` are rejected by the bank at once. Those ending in `0002` stay pending until you complete them with the simulation API. Any other account succeeds at once. See [ADR 0029](./docs/adr/0029-sandbox.md).
 
 ## Fees
 
@@ -656,7 +677,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 - [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe), currency routing (USD through Stripe only), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
-- [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
+- [ ] **Phase 4 — Developer platform** (done: sandbox): CLI, more providers, dashboard
 
 ## Architecture decisions
 

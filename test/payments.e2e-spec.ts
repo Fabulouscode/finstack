@@ -459,13 +459,10 @@ describe('Payments: first vertical slice (e2e)', () => {
     });
   });
 
-  it('completes a mock checkout through the dev endpoint', async () => {
+  it('completes a mock checkout through the sandbox endpoint', async () => {
     const payment = await startPayment({ amount: 5_000, currency: 'USD' });
 
-    await authed(
-      'post',
-      `/v1/dev/mock-provider/payments/${payment.providerReference}/complete`,
-    )
+    await authed('post', `/v1/sandbox/payments/${payment.id}/complete`)
       .send({ outcome: 'successful' })
       .expect(200);
 

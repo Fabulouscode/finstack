@@ -27,6 +27,19 @@ export function configureApp(app: NestExpressApplication): void {
   // First, so every later middleware, log line and error carries the ID.
   app.use(requestIdMiddleware);
   app.use(httpObserver(app.get(MetricsService), app.get(AppLogger)));
+  if (appSettings.sandbox) {
+    // Every response says it isn't real money.
+    app.use(
+      (
+        _req: unknown,
+        res: { setHeader(n: string, v: string): void },
+        next: () => void,
+      ) => {
+        res.setHeader('FinStack-Mode', 'sandbox');
+        next();
+      },
+    );
+  }
   app.use(
     helmet({
       contentSecurityPolicy: {

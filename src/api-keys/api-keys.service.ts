@@ -56,7 +56,8 @@ export class ApiKeysService {
       throw new ApiKeyScopeNotGrantableException(notGrantable);
     }
 
-    const environment = this.app.isProduction ? 'live' : 'test';
+    // Keys say where they work: fsk_live_ only where real money moves.
+    const environment = this.app.isLive ? 'live' : 'test';
     const id = randomBytes(4).toString('hex');
     const secret = `fsk_${environment}_${id}_${randomBytes(32).toString('base64url')}`;
 

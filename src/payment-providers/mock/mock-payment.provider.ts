@@ -72,6 +72,18 @@ export type MockPayoutBehaviour =
 /** Bank account number the mock treats as nonexistent. */
 export const MOCK_INVALID_ACCOUNT_NUMBER = '0000000000';
 
+/**
+ * Test bank accounts (like card-network test cards): the account number's
+ * ending decides what happens to payouts sent to it. Per account, so
+ * developers sharing a sandbox don't affect each other.
+ */
+export const MOCK_PAYOUT_ACCOUNTS = {
+  /** Payouts are rejected by the "bank" at once. */
+  rejectedSuffix: '0001',
+  /** Payouts stay pending until completed through the sandbox API. */
+  pendingSuffix: '0002',
+} as const;
+
 interface MockPayout {
   reference: string;
   providerReference: string;
@@ -404,20 +416,35 @@ export class MockPaymentProvider implements PaymentProvider {
       .update(`${input.currency}:${input.bankCode}:${input.accountNumber}`)
       .digest('hex')
       .slice(0, 16);
+    const behaviour = input.accountNumber.endsWith(
+      MOCK_PAYOUT_ACCOUNTS.rejectedSuffix,
+    )
+      ? '_rejects'
+      : input.accountNumber.endsWith(MOCK_PAYOUT_ACCOUNTS.pendingSuffix)
+        ? '_pending'
+        : '';
     return Promise.resolve({
-      recipientReference: `RCP_mock_${id}`,
+      recipientReference: `RCP_mock_${id}${behaviour}`,
       accountName: input.accountName ?? 'Mock Account Holder',
       bankName: `Mock Bank ${input.bankCode}`,
     });
   }
 
   private initiatePayout(input: InitiatePayoutInput): Promise<PayoutResult> {
-    if (this.payoutBehaviour === 'rejected') {
+    // A test account's own behaviour wins over the global setting.
+    const behaviour: MockPayoutBehaviour = input.recipientReference.endsWith(
+      '_rejects',
+    )
+      ? 'rejected'
+      : input.recipientReference.endsWith('_pending')
+        ? 'pending'
+        : this.payoutBehaviour;
+    if (behaviour === 'rejected') {
       return Promise.reject(
         new PaymentProviderError('Insufficient provider balance (mock)', false),
       );
     }
-    if (this.payoutBehaviour === 'unavailable') {
+    if (behaviour === 'unavailable') {
       return Promise.reject(
         new PaymentProviderError('Mock provider timed out', true),
       );
@@ -435,12 +462,12 @@ export class MockPaymentProvider implements PaymentProvider {
       amount: input.amount,
       currency: input.currency,
       createdAt: new Date(),
-      status: this.payoutBehaviour === 'pending' ? 'pending' : 'successful',
+      status: behaviour === 'pending' ? 'pending' : 'successful',
     };
     this.payoutsByReference.set(input.reference, payout);
     this.initiatedPayouts.push(input.reference);
 
-    if (this.payoutBehaviour === 'lost') {
+    if (behaviour === 'lost') {
       payout.status = 'successful';
       return Promise.reject(
         new PaymentProviderError('Mock provider timed out', true),
