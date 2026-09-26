@@ -409,14 +409,11 @@ export class OutboundWebhooksService {
       return 'failed';
     }
 
-    const refusal = await this.urlPolicy.check(endpoint.url);
-    const result = refusal
-      ? { ok: false as const, status: null, error: refusal }
-      : await this.sender.send(
-          endpoint.url,
-          delivery,
-          this.activeSecrets(endpoint),
-        );
+    // Resolved and checked now, then connected to exactly that address.
+    const target = await this.urlPolicy.resolve(endpoint.url);
+    const result = target.ok
+      ? await this.sender.send(target, delivery, this.activeSecrets(endpoint))
+      : { ok: false as const, status: null, error: target.reason };
 
     if (result.ok) {
       await this.deliveries.update(delivery.id, {

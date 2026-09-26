@@ -53,7 +53,7 @@ The signing secret must be read back to sign, so it can't be hashed like API key
 
 ### SSRF protection
 
-URLs must be `https` in production, contain no credentials, and resolve only to public addresses. Loopback, private, link-local (including cloud metadata at `169.254.169.254`), unique-local and multicast addresses are refused. The check runs when the URL is saved and **again before each delivery**, because DNS can change. Private URLs are allowed outside production, for local development (`OUTBOUND_WEBHOOK_ALLOW_PRIVATE_URLS`).
+URLs must be `https` in production, contain no credentials, and resolve only to public addresses. Loopback, private, link-local (including cloud metadata at `169.254.169.254`), unique-local and multicast addresses are refused. The check runs when the URL is saved and **again before each delivery**, because DNS can change. Each delivery then connects to exactly the address it checked (see Consequences: DNS pinning). Private URLs are allowed outside production, for local development (`OUTBOUND_WEBHOOK_ALLOW_PRIVATE_URLS`).
 
 ### Access
 
@@ -62,5 +62,5 @@ URLs must be `https` in production, contain no credentials, and resolve only to 
 ## Consequences
 
 - Receivers must be idempotent (at-least-once delivery), and events may arrive out of order: they should re-read state when order matters.
-- DNS rebinding between the check and the connection is still theoretically possible. Pinning the resolved address per request would close that gap and is a later hardening step.
+- **DNS pinning (added later).** The hostname is resolved once per delivery, *every* address is checked, and the request connects to the checked address through `node:http`/`node:https` with a fixed `lookup`, while still sending the real host name (Host header, TLS SNI and certificate verification). A DNS server can no longer answer "public" to the check and "internal" to the connection (DNS rebinding).
 - User-facing notifications (email) are a separate channel on the same domain events.

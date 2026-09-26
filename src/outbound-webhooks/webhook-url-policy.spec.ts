@@ -50,3 +50,36 @@ describe('WebhookUrlPolicy', () => {
     ).resolves.toBeNull();
   });
 });
+
+describe('WebhookUrlPolicy DNS pinning', () => {
+  it('checks every address a name resolves to (one private one is enough to refuse)', async () => {
+    const rebinding = policy();
+    rebinding.resolver = () =>
+      Promise.resolve([
+        { address: '93.184.216.34', family: 4 },
+        { address: '169.254.169.254', family: 4 },
+      ]);
+    await expect(
+      rebinding.resolve('https://hooks.example.com/x'),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'The URL points to a private or internal address',
+    });
+  });
+
+  it('returns the checked address to connect to', async () => {
+    const pinned = policy();
+    let lookups = 0;
+    pinned.resolver = () => {
+      lookups++;
+      return Promise.resolve([{ address: '93.184.216.34', family: 4 }]);
+    };
+    const resolution = await pinned.resolve('https://hooks.example.com/x');
+    expect(resolution).toMatchObject({
+      ok: true,
+      address: '93.184.216.34',
+      family: 4,
+    });
+    expect(lookups).toBe(1);
+  });
+});

@@ -493,7 +493,7 @@ function verify(header, rawBody, secret, toleranceSeconds = 300) {
 }
 ```
 
-Signing secrets are stored encrypted (`DATA_ENCRYPTION_KEY`), and URLs that point at private or internal addresses are refused in production. See [ADR 0021](./docs/adr/0021-outbound-webhooks.md).
+Signing secrets are stored encrypted (`DATA_ENCRYPTION_KEY`). URLs that point at private or internal addresses are refused in production, and each delivery connects to the exact address it checked (DNS pinning), so DNS rebinding can't redirect it into your network. See [ADR 0021](./docs/adr/0021-outbound-webhooks.md).
 
 ## Email notifications
 
@@ -655,6 +655,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Organization-owned wallets, payments and transactions
 - [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
+- [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
 
 ## Architecture decisions
