@@ -645,7 +645,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 
 ## Roadmap
 
-- [ ] **Phase 1 — Financial foundation**
+- [x] **Phase 1 — Financial foundation**
   - [x] Config, PostgreSQL/TypeORM, Docker, HTTP foundation, Swagger
   - [x] Users and authentication (JWT, rotating refresh tokens, roles)
   - [x] Double-entry ledger and wallets (single or multi-currency, primary wallet)
@@ -653,7 +653,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Transactions (state machine), idempotency keys, transfers
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
-- [ ] **Phase 2 — Payments** (done: provider abstraction, mock, Paystack and Stripe providers, currency routing, payments with FX, signed webhooks, outbox, BullMQ workers, refunds): provider abstraction (Mock, Paystack, Stripe), webhooks, refunds, outbox, background jobs
+- [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe), currency routing (USD through Stripe only), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
 - [ ] **Phase 4 — Developer platform:** CLI, more providers, dashboard, sandbox
