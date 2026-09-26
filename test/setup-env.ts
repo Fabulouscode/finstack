@@ -18,6 +18,8 @@ process.env.PAYMENT_PROVIDERS = 'mock';
 process.env.DEFAULT_PAYMENT_PROVIDER = 'mock';
 process.env.PAYMENT_SETTLEMENT_DELAY_SECONDS = '0';
 process.env.EMAIL_DRIVER = 'log';
+// Access logs for every test request would drown the output.
+process.env.LOG_LEVEL = 'warn';
 process.env.MOCK_PROVIDER_WEBHOOK_SECRET = 'test-mock-webhook-secret';
 
 // Separate Redis DB and key prefix, so tests never touch development queues.

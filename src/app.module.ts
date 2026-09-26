@@ -1,6 +1,7 @@
 import { AdminModule } from './admin/admin.module';
 import { AuditApiModule } from './audit/audit-api.module';
 import { AuditModule } from './audit/audit.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { PayoutsModule } from './payouts/payouts.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { Module } from '@nestjs/common';
@@ -27,6 +28,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     ConfigModule,
     DatabaseModule,
     AuditModule,
+    ObservabilityModule,
     AuditApiModule,
     HttpModule,
     HealthModule,

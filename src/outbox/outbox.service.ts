@@ -22,6 +22,13 @@ export interface DomainEventMessage {
 
 @Injectable()
 export class OutboxService {
+  /** Events not yet published (the relay's backlog). */
+  countPendingWithin(manager: EntityManager): Promise<number> {
+    return manager.countBy(OutboxEvent, {
+      status: OutboxEventStatus.Pending,
+    });
+  }
+
   /** Removes published events older than `days` (maintenance). Returns how many. */
   async deletePublishedWithin(
     manager: EntityManager,

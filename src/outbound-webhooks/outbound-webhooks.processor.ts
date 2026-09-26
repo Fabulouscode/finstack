@@ -3,6 +3,7 @@ import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { jobsConfig } from '../config/jobs.config';
 import type { JobsConfig } from '../config/jobs.config';
+import { MetricsService } from '../observability/metrics.service';
 import { ManagedWorker } from '../queues/managed-worker';
 import { QueueName } from '../queues/queue-names';
 import {
@@ -23,6 +24,7 @@ export class OutboundWebhooksProcessor extends ManagedWorker {
 
   constructor(
     private readonly webhooks: OutboundWebhooksService,
+    private readonly metrics: MetricsService,
     @Inject(jobsConfig.KEY) config: JobsConfig,
   ) {
     super();

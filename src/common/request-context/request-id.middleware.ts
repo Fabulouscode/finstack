@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { NextFunction, Request, Response } from 'express';
 import { RequestContext } from './request-context';
 
@@ -16,6 +16,17 @@ export function resolveRequestId(incoming: string | undefined): string {
  * Assigns every request an ID (reusing a valid inbound `X-Request-Id`),
  * returns it in the response header and exposes it via RequestContext.
  */
+// traceparent: version-traceid-parentid-flags (W3C Trace Context).
+const TRACEPARENT = /^[0-9a-f]{2}-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/;
+
+/** The caller's trace id, or a new one (all-zero ids are invalid). */
+export function resolveTraceId(traceparent: string | undefined): string {
+  const traceId = traceparent ? TRACEPARENT.exec(traceparent)?.[1] : undefined;
+  return traceId && !/^0+$/.test(traceId)
+    ? traceId
+    : randomBytes(16).toString('hex');
+}
+
 export function requestIdMiddleware(
   req: Request,
   res: Response,
@@ -24,5 +35,12 @@ export function requestIdMiddleware(
   const requestId = resolveRequestId(req.header(REQUEST_ID_HEADER));
 
   res.setHeader(REQUEST_ID_HEADER, requestId);
-  RequestContext.run({ requestId, ipAddress: req.ip }, next);
+  RequestContext.run(
+    {
+      requestId,
+      traceId: resolveTraceId(req.header('traceparent')),
+      ipAddress: req.ip,
+    },
+    next,
+  );
 }

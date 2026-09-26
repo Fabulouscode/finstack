@@ -9,6 +9,9 @@ import {
 import { appConfig } from './config/app.config';
 import { httpConfig } from './config/http.config';
 import { setupSwagger } from './docs/swagger';
+import { AppLogger } from './observability/app-logger';
+import { httpObserver } from './observability/http-observer.middleware';
+import { MetricsService } from './observability/metrics.service';
 
 /**
  * Applies app-wide HTTP setup. Shared by `main.ts` and the e2e tests so
@@ -23,6 +26,7 @@ export function configureApp(app: NestExpressApplication): void {
 
   // First, so every later middleware, log line and error carries the ID.
   app.use(requestIdMiddleware);
+  app.use(httpObserver(app.get(MetricsService), app.get(AppLogger)));
   app.use(
     helmet({
       contentSecurityPolicy: {

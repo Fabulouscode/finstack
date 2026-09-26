@@ -8,6 +8,8 @@ export type Actor =
 
 export interface RequestContextStore {
   requestId: string;
+  /** W3C trace id (from `traceparent`, or new), to join logs with traces. */
+  traceId?: string;
   ipAddress?: string;
   actor?: Actor;
 }
@@ -30,6 +32,10 @@ export const RequestContext = {
 
   requestId(): string | undefined {
     return storage.getStore()?.requestId;
+  },
+
+  traceId(): string | undefined {
+    return storage.getStore()?.traceId;
   },
 
   /** Records the authenticated principal; no-op outside a request. */

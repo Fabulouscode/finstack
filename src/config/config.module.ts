@@ -8,6 +8,7 @@ import { fxConfig } from './fx.config';
 import { httpConfig } from './http.config';
 import { idempotencyConfig } from './idempotency.config';
 import { jobsConfig } from './jobs.config';
+import { observabilityConfig } from './observability.config';
 import { outboundWebhooksConfig } from './outbound-webhooks.config';
 import { paymentsConfig } from './payments.config';
 import { redisConfig } from './redis.config';
@@ -34,6 +35,7 @@ import { walletsConfig } from './wallets.config';
         httpConfig,
         idempotencyConfig,
         jobsConfig,
+        observabilityConfig,
         outboundWebhooksConfig,
         paymentsConfig,
         redisConfig,

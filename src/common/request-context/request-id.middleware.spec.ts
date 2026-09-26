@@ -4,6 +4,7 @@ import {
   REQUEST_ID_HEADER,
   requestIdMiddleware,
   resolveRequestId,
+  resolveTraceId,
 } from './request-id.middleware';
 
 const UUID =
@@ -44,5 +45,22 @@ describe('requestIdMiddleware', () => {
     expect(setHeader).toHaveBeenCalledWith(REQUEST_ID_HEADER, 'inbound-id');
     expect(seenInContext).toBe('inbound-id');
     expect(RequestContext.requestId()).toBeUndefined();
+  });
+});
+
+describe('resolveTraceId', () => {
+  it('uses the trace id of a valid traceparent', () => {
+    expect(
+      resolveTraceId('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'),
+    ).toBe('4bf92f3577b34da6a3ce929d0e0e4736');
+  });
+
+  it.each([
+    undefined,
+    'garbage',
+    '00-00000000000000000000000000000000-00f067aa0ba902b7-01',
+  ])('starts a new trace for %s', (header) => {
+    expect(resolveTraceId(header)).toMatch(/^[0-9a-f]{32}$/);
+    expect(resolveTraceId(header)).not.toBe('0'.repeat(32));
   });
 });

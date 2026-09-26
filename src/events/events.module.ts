@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { NotificationsEventHandler } from '../notifications/notifications.event-handler';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { MetricsEventHandler } from '../observability/metrics.event-handler';
 import { OutboundWebhooksEventHandler } from '../outbound-webhooks/outbound-webhooks.event-handler';
 import { OutboundWebhooksModule } from '../outbound-webhooks/outbound-webhooks.module';
 import { QueuesModule } from '../queues/queues.module';
@@ -22,6 +23,7 @@ import { LoggingEventHandler } from './logging-event.handler';
         LoggingEventHandler,
         OutboundWebhooksEventHandler,
         NotificationsEventHandler,
+        MetricsEventHandler,
       ],
       useFactory: (...handlers: unknown[]) => handlers,
     },

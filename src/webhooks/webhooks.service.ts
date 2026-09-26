@@ -5,6 +5,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AuditAction } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/http/app.exception';
+import { MetricsService } from '../observability/metrics.service';
 import { WEBHOOK_RECEIVED } from '../outbox/outbox-publisher';
 import { OutboxRelay } from '../outbox/outbox-relay.service';
 import { OutboxService } from '../outbox/outbox.service';
@@ -76,6 +77,7 @@ export class WebhooksService {
     private readonly refunds: RefundsService,
     private readonly payouts: PayoutsService,
     private readonly audit: AuditService,
+    private readonly metrics: MetricsService,
   ) {}
 
   /**
@@ -161,6 +163,10 @@ export class WebhooksService {
     }
 
     const attempts = event.attempts + 1;
+    const counted = (status: WebhookEventStatus): WebhookEventStatus => {
+      this.metrics.countProviderWebhook(event.provider, status);
+      return status;
+    };
     try {
       if (
         (event.type === 'refund.succeeded' || event.type === 'refund.failed') &&
@@ -182,7 +188,7 @@ export class WebhooksService {
           attempts,
           synced > 0 ? 'refunds_synced' : 'no_matching_refund',
         );
-        return status;
+        return counted(status);
       }
 
       if (event.type.startsWith('payout.') && event.providerReference) {
@@ -200,7 +206,7 @@ export class WebhooksService {
           attempts,
           found ? 'payout_synced' : 'no_matching_payout',
         );
-        return status;
+        return counted(status);
       }
 
       const payment =
@@ -218,7 +224,7 @@ export class WebhooksService {
           attempts,
           'no_matching_payment',
         );
-        return WebhookEventStatus.Ignored;
+        return counted(WebhookEventStatus.Ignored);
       }
 
       const outcome = await this.settlement.settle(payment);
@@ -228,7 +234,7 @@ export class WebhooksService {
         attempts,
         outcome,
       );
-      return WebhookEventStatus.Processed;
+      return counted(WebhookEventStatus.Processed);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
@@ -239,7 +245,7 @@ export class WebhooksService {
         attempts,
         lastError: message.slice(0, 1000),
       });
-      return WebhookEventStatus.Failed;
+      return counted(WebhookEventStatus.Failed);
     }
   }
 
