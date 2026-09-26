@@ -488,13 +488,15 @@ describe('PaystackProvider reconciliation', () => {
         meta: { page: 1, pageCount: 1 },
       },
     ]);
-    await expect(provider.reconciliation.listPayouts?.(range)).resolves.toEqual([
-      expect.objectContaining({
-        reference: 'pyt_1',
-        providerReference: 'TRF_1',
-        status: 'successful',
-        amount: 5000n,
-      }),
-    ]);
+    await expect(provider.reconciliation.listPayouts?.(range)).resolves.toEqual(
+      [
+        expect.objectContaining({
+          reference: 'pyt_1',
+          providerReference: 'TRF_1',
+          status: 'successful',
+          amount: 5000n,
+        }),
+      ],
+    );
   });
 });

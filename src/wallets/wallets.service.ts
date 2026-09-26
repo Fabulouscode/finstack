@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AuditAction } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { CurrencyCode } from '../common/money/currency';
@@ -730,7 +730,8 @@ export class WalletsService {
     );
   }
 
-  private async getWallet(walletId: string): Promise<Wallet> {
+  /** A wallet by id (e.g. to post to its accounts); no ownership check. */
+  async getWallet(walletId: string): Promise<Wallet> {
     const wallet = await this.wallets.findOneBy({ id: walletId });
     if (!wallet) {
       throw new WalletNotFoundException();
@@ -831,15 +832,13 @@ export class WalletsService {
   private async withBalances(wallets: Wallet[]): Promise<WalletWithBalances[]> {
     if (wallets.length === 0) return [];
 
-    const accounts = await this.dataSource.manager.findBy(LedgerAccount, {
-      id: In(
-        wallets.flatMap((w) => [
-          w.availableAccountId,
-          w.pendingAccountId,
-          w.reservedAccountId,
-        ]),
-      ),
-    });
+    const accounts = await this.ledger.getAccounts(
+      wallets.flatMap((w) => [
+        w.availableAccountId,
+        w.pendingAccountId,
+        w.reservedAccountId,
+      ]),
+    );
     const balance = new Map(accounts.map((a) => [a.id, a.balance]));
 
     return wallets.map((wallet) => ({

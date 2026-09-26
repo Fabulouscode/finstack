@@ -139,6 +139,18 @@ export class FxService {
   }
 
   /** Own quotes only; other users' quotes read as not found. */
+  /** getQuote() on the caller's database transaction, without an owner check. */
+  async getQuoteWithin(
+    manager: EntityManager,
+    quoteId: string,
+  ): Promise<FxQuote> {
+    const quote = await manager.findOneBy(FxQuote, { id: quoteId });
+    if (!quote) {
+      throw new FxQuoteNotFoundException();
+    }
+    return quote;
+  }
+
   async getQuote(quoteId: string, userId?: string | null): Promise<FxQuote> {
     const quote = await this.quotes.findOneBy({ id: quoteId });
     if (!quote || (userId !== undefined && quote.userId !== userId)) {
@@ -269,12 +281,14 @@ export class FxService {
     quote: FxQuote,
   ): Promise<ConversionResult> {
     // Sequential: both reads run on the caller's transaction connection.
-    const sourceLeg = await manager.findOneByOrFail(LedgerTransaction, {
-      id: quote.sourceTransactionId ?? '',
-    });
-    const targetLeg = await manager.findOneByOrFail(LedgerTransaction, {
-      id: quote.targetTransactionId ?? '',
-    });
+    const sourceLeg = await this.ledger.getTransactionWithin(
+      manager,
+      quote.sourceTransactionId ?? '',
+    );
+    const targetLeg = await this.ledger.getTransactionWithin(
+      manager,
+      quote.targetTransactionId ?? '',
+    );
     return { quote, sourceLeg, targetLeg, replayed: true };
   }
 

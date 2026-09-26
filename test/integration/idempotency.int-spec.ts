@@ -157,4 +157,17 @@ describe('IdempotencyService (integration)', () => {
       kind: 'execute',
     });
   });
+
+  it('deletes expired keys only', async () => {
+    await service.begin(request);
+    await service.begin({ ...request, key: 'key-2' });
+    await dataSource.query(
+      `UPDATE idempotency_keys SET expires_at = now() - interval '1 second' WHERE key = 'key-1'`,
+    );
+
+    await expect(service.deleteExpired()).resolves.toBe(1);
+    await expect(
+      dataSource.getRepository(IdempotencyKey).count(),
+    ).resolves.toBe(1);
+  });
 });

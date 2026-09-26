@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { toCurrencyCode } from '../common/money/currency';
 import type { CurrencyCode } from '../common/money/currency';
 import {
@@ -14,7 +14,10 @@ import {
 import { isUniqueViolation } from '../database/postgres-errors';
 import { FxQuote } from '../fx/fx-quote.entity';
 import { FxService } from '../fx/fx.service';
-import { PaymentProviderError } from '../payment-providers/payment-provider';
+import {
+  PaymentProviderError,
+  TimeRange,
+} from '../payment-providers/payment-provider';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { Transaction } from '../transactions/transaction.entity';
 import {
@@ -57,8 +60,6 @@ export class PaymentsService {
 
   constructor(
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
-    @InjectRepository(Transaction)
-    private readonly transactionsRepo: Repository<Transaction>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly transactions: TransactionsService,
     private readonly providers: PaymentProvidersService,
@@ -174,6 +175,60 @@ export class PaymentsService {
     return this.view(payment);
   }
 
+  async getById(id: string, manager?: EntityManager): Promise<Payment> {
+    const payment = await (manager ?? this.payments.manager).findOneBy(
+      Payment,
+      { id },
+    );
+    if (!payment) {
+      throw new PaymentNotFoundException();
+    }
+    return payment;
+  }
+
+  /** Locks the payment row for the caller's database transaction. */
+  async lockWithin(manager: EntityManager, id: string): Promise<Payment> {
+    const payment = await manager
+      .createQueryBuilder(Payment, 'payment')
+      .setLock('pessimistic_write')
+      .where('payment.id = :id', { id })
+      .getOne();
+    if (!payment) {
+      throw new PaymentNotFoundException();
+    }
+    return payment;
+  }
+
+  /**
+   * Sets how much of the payment's credit is still in its settlement hold
+   * (refunds take from it and may give it back). Call with the payment
+   * locked (lockWithin).
+   */
+  async setHeldAmountWithin(
+    manager: EntityManager,
+    paymentId: string,
+    pendingAmount: bigint,
+  ): Promise<void> {
+    await manager.update(Payment, paymentId, { pendingAmount });
+  }
+
+  /** The payment whose transaction has this reference (`trx_...`). */
+  async findByTransactionReference(reference: string): Promise<Payment | null> {
+    const transaction = await this.transactions.findByReference(reference);
+    return transaction
+      ? this.payments.findOneBy({ transactionId: transaction.id })
+      : null;
+  }
+
+  /** Payments routed to `provider` and created in the range (reconciliation). */
+  listForProvider(provider: string, range: TimeRange): Promise<Payment[]> {
+    return this.payments
+      .createQueryBuilder('payment')
+      .where('payment.provider = :provider', { provider })
+      .andWhere('payment.createdAt >= :from AND payment.createdAt < :to', range)
+      .getMany();
+  }
+
   findByProviderReference(
     provider: string,
     providerReference: string,
@@ -188,9 +243,7 @@ export class PaymentsService {
    * could pair a new status with an old payment row).
    */
   async view(payment: Payment): Promise<PaymentView> {
-    const transaction = await this.transactionsRepo.findOneByOrFail({
-      id: payment.transactionId,
-    });
+    const transaction = await this.transactions.getById(payment.transactionId);
     const current = await this.payments.findOneByOrFail({ id: payment.id });
     const quote = current.fxQuoteId
       ? await this.fx.getQuote(current.fxQuoteId)

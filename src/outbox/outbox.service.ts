@@ -22,6 +22,23 @@ export interface DomainEventMessage {
 
 @Injectable()
 export class OutboxService {
+  /** Removes published events older than `days` (maintenance). Returns how many. */
+  async deletePublishedWithin(
+    manager: EntityManager,
+    days: number,
+  ): Promise<number> {
+    const result = await manager
+      .createQueryBuilder()
+      .delete()
+      .from(OutboxEvent)
+      .where('status = :status', { status: OutboxEventStatus.Published })
+      .andWhere('published_at < now() - make_interval(days => :days)', {
+        days,
+      })
+      .execute();
+    return result.affected ?? 0;
+  }
+
   /**
    * Records an event inside the caller's database transaction. It becomes
    * visible to the relay only if that transaction commits.

@@ -157,4 +157,18 @@ describe('RefreshTokenService (integration)', () => {
 
     await expect(tokens.count()).resolves.toBe(0);
   });
+
+  it('deletes tokens only once they are past retention', async () => {
+    await service.issue(userId); // active: kept
+    const revoked = await service.issue(userId);
+    await service.revoke(revoked.token);
+    await service.issue(userId);
+    await dataSource.query(
+      `UPDATE refresh_tokens SET revoked_at = now() - interval '31 days'
+        WHERE revoked_at IS NOT NULL`,
+    );
+
+    await expect(service.deleteFinished(30)).resolves.toBe(1);
+    await expect(tokens.count()).resolves.toBe(2);
+  });
 });

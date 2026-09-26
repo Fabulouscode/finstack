@@ -119,6 +119,22 @@ export class RefreshTokenService {
     return outcome.result;
   }
 
+  /**
+   * Removes tokens expired or revoked more than `days` ago (maintenance);
+   * until then they're kept for reuse detection. Returns how many.
+   */
+  async deleteFinished(days: number): Promise<number> {
+    const result = await this.tokens
+      .createQueryBuilder()
+      .delete()
+      .where(
+        '(expires_at < now() - make_interval(days => :days)) OR (revoked_at < now() - make_interval(days => :days))',
+        { days },
+      )
+      .execute();
+    return result.affected ?? 0;
+  }
+
   /** Ends the session the token belongs to. Unknown tokens are ignored (idempotent). */
   async revoke(token: string): Promise<void> {
     const found = await this.tokens.findOneBy({ tokenHash: hashToken(token) });

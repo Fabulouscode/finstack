@@ -5,7 +5,6 @@ import { AuditService } from '../audit/audit.service';
 import { randomBytes } from 'node:crypto';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { isUniqueViolation } from '../database/postgres-errors';
-import { FxQuote } from '../fx/fx-quote.entity';
 import { LedgerService } from '../ledger/ledger.service';
 import { EntryDirection } from '../ledger/ledger.types';
 import { SystemAccounts } from '../ledger/system-accounts';
@@ -14,16 +13,16 @@ import {
   PaymentProviderError,
   ProviderPaymentStatus,
 } from '../payment-providers/payment-provider';
+import { FxService } from '../fx/fx.service';
+import { PaymentsService } from '../payments/payments.service';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { Payment } from '../payments/payment.entity';
-import { PaymentNotFoundException } from '../payments/payments.errors';
 import { Transaction } from '../transactions/transaction.entity';
 import {
   TransactionStatus,
   TransactionType,
 } from '../transactions/transaction.types';
 import { TransactionsService } from '../transactions/transactions.service';
-import { Wallet } from '../wallets/wallet.entity';
 import { WalletsService } from '../wallets/wallets.service';
 import { Refund } from './refund.entity';
 import { ConversionReversal, reverseConversion } from './refund-math';
@@ -63,6 +62,8 @@ export class RefundsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly providers: PaymentProvidersService,
     private readonly transactions: TransactionsService,
+    private readonly payments: PaymentsService,
+    private readonly fx: FxService,
     private readonly wallets: WalletsService,
     private readonly ledger: LedgerService,
     private readonly outbox: OutboxService,
@@ -104,16 +105,13 @@ export class RefundsService {
   }
 
   async view(refundId: string): Promise<RefundView> {
-    const refund = await this.refunds.findOneBy({ id: refundId });
-    if (!refund) {
+    const found = await this.refunds.findOneBy({ id: refundId });
+    if (!found) {
       throw new RefundNotFoundException();
     }
-    const transaction = await this.dataSource.manager.findOneByOrFail(
-      Transaction,
-      {
-        id: refund.transactionId,
-      },
-    );
+    const transaction = await this.transactions.getById(found.transactionId);
+    // Re-read after the status (see PaymentsService.view).
+    const refund = await this.refunds.findOneByOrFail({ id: refundId });
     return { refund, transaction };
   }
 
@@ -137,16 +135,21 @@ export class RefundsService {
    * processing refund is re-checked with the provider.
    */
   async syncFromWebhook(provider: string, reference: string): Promise<number> {
+    // The reference is the refund's own, or the refunded payment's.
+    const payment = await this.payments.findByTransactionReference(reference);
     const candidates = await this.refunds
       .createQueryBuilder('refund')
-      .innerJoin(Transaction, 'rt', 'rt.id = refund.transactionId')
-      .innerJoin(Payment, 'payment', 'payment.id = refund.paymentId')
-      .innerJoin(Transaction, 'pt', 'pt.id = payment.transactionId')
       .where('refund.provider = :provider', { provider })
-      .andWhere('rt.status = :status', { status: TransactionStatus.Processing })
       .andWhere(
-        '(refund.reference = :reference OR pt.reference = :reference)',
-        { reference },
+        this.transactions.statusIn('refund.transaction_id', [
+          TransactionStatus.Processing,
+        ]),
+      )
+      .andWhere(
+        payment
+          ? '(refund.reference = :reference OR refund.paymentId = :paymentId)'
+          : 'refund.reference = :reference',
+        { reference, paymentId: payment?.id },
       )
       .getMany();
 
@@ -167,17 +170,11 @@ export class RefundsService {
   ): Promise<Refund> {
     // Serialises concurrent refunds of one payment, so the remaining amount
     // can't be over-committed.
-    const payment = await manager
-      .createQueryBuilder(Payment, 'payment')
-      .setLock('pessimistic_write')
-      .where('payment.id = :paymentId', { paymentId })
-      .getOne();
-    if (!payment) {
-      throw new PaymentNotFoundException();
-    }
-    const paymentTransaction = await manager.findOneByOrFail(Transaction, {
-      id: payment.transactionId,
-    });
+    const payment = await this.payments.lockWithin(manager, paymentId);
+    const paymentTransaction = await this.transactions.getById(
+      payment.transactionId,
+      manager,
+    );
     if (paymentTransaction.status === TransactionStatus.Reversed) {
       throw new PaymentAlreadyRefundedException();
     }
@@ -192,9 +189,7 @@ export class RefundsService {
       throw new RefundExceedsRemainingException(remaining, payment.currency);
     }
 
-    const wallet = await manager.findOneByOrFail(Wallet, {
-      id: payment.walletId,
-    });
+    const wallet = await this.wallets.getWallet(payment.walletId);
     const reversal = await this.reversal(
       manager,
       payment,
@@ -234,9 +229,11 @@ export class RefundsService {
       metadata: { transactionId: transaction.id },
     });
     if (fromPending > 0n) {
-      await manager.update(Payment, payment.id, {
-        pendingAmount: payment.pendingAmount - fromPending,
-      });
+      await this.payments.setHeldAmountWithin(
+        manager,
+        payment.id,
+        payment.pendingAmount - fromPending,
+      );
     }
 
     const refund = await manager.save(
@@ -282,8 +279,8 @@ export class RefundsService {
     const [row] = await manager.query<{ total: string | null }[]>(
       `SELECT SUM(r.amount) AS total
          FROM refunds r
-         JOIN transactions t ON t.id = r.transaction_id
-        WHERE r.payment_id = $1 AND t.status <> 'failed'`,
+        WHERE r.payment_id = $1
+          AND ${this.transactions.statusIn('r.transaction_id', [TransactionStatus.Processing, TransactionStatus.Successful])}`,
       [paymentId],
     );
     return BigInt(row?.total ?? 0);
@@ -303,9 +300,7 @@ export class RefundsService {
       };
     }
     // The quote actually used for the credit (a re-quote for late payments).
-    const quote = await manager.findOneByOrFail(FxQuote, {
-      id: payment.fxQuoteId,
-    });
+    const quote = await this.fx.getQuoteWithin(manager, payment.fxQuoteId);
     return reverseConversion(
       {
         charged: quote.sourceAmount,
@@ -320,9 +315,7 @@ export class RefundsService {
   // ---- Step 2 -----------------------------------------------------------------
 
   private async submit(refund: Refund): Promise<void> {
-    const payment = await this.dataSource.manager.findOneByOrFail(Payment, {
-      id: refund.paymentId,
-    });
+    const payment = await this.payments.getById(refund.paymentId);
     const provider = this.providers.get(refund.provider);
 
     let status: ProviderPaymentStatus;
@@ -392,16 +385,14 @@ export class RefundsService {
           };
 
     await this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         refund.transactionId,
       );
       if (transaction.status !== TransactionStatus.Processing) {
         return; // already settled by a concurrent webhook or retry
       }
-      const wallet = await manager.findOneByOrFail(Wallet, {
-        id: refund.walletId,
-      });
+      const wallet = await this.wallets.getWallet(refund.walletId);
 
       // Wallet-currency leg: the held funds leave the wallet.
       const walletLeg = await this.ledger.postWithin(manager, {
@@ -511,7 +502,7 @@ export class RefundsService {
     const refund = await this.refunds.findOneByOrFail({ id: refundId });
 
     await this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         refund.transactionId,
       );
@@ -563,11 +554,7 @@ export class RefundsService {
     if (refund.pendingHoldAmount === 0n) {
       return 0n;
     }
-    const payment = await manager
-      .createQueryBuilder(Payment, 'payment')
-      .setLock('pessimistic_write')
-      .where('payment.id = :id', { id: refund.paymentId })
-      .getOneOrFail();
+    const payment = await this.payments.lockWithin(manager, refund.paymentId);
     const stillHeld =
       payment.pendingAmount > 0n ||
       (payment.fundsAvailableAt !== null &&
@@ -575,9 +562,11 @@ export class RefundsService {
     if (!stillHeld) {
       return 0n;
     }
-    await manager.update(Payment, payment.id, {
-      pendingAmount: payment.pendingAmount + refund.pendingHoldAmount,
-    });
+    await this.payments.setHeldAmountWithin(
+      manager,
+      payment.id,
+      payment.pendingAmount + refund.pendingHoldAmount,
+    );
     return refund.pendingHoldAmount;
   }
 
@@ -585,12 +574,12 @@ export class RefundsService {
     manager: EntityManager,
     paymentId: string,
   ): Promise<void> {
-    const payment = await manager.findOneByOrFail(Payment, { id: paymentId });
+    const payment = await this.payments.getById(paymentId, manager);
     const [row] = await manager.query<{ total: string | null }[]>(
       `SELECT SUM(r.amount) AS total
          FROM refunds r
-         JOIN transactions t ON t.id = r.transaction_id
-        WHERE r.payment_id = $1 AND t.status = 'successful'`,
+        WHERE r.payment_id = $1
+          AND ${this.transactions.statusIn('r.transaction_id', [TransactionStatus.Successful])}`,
       [paymentId],
     );
     if (BigInt(row?.total ?? 0) === payment.amount) {
@@ -600,16 +589,5 @@ export class RefundsService {
         TransactionStatus.Reversed,
       );
     }
-  }
-
-  private lockTransaction(
-    manager: EntityManager,
-    id: string,
-  ): Promise<Transaction> {
-    return manager
-      .createQueryBuilder(Transaction, 'txn')
-      .setLock('pessimistic_write')
-      .where('txn.id = :id', { id })
-      .getOneOrFail();
   }
 }

@@ -18,10 +18,12 @@ import {
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { PaymentSettlementService } from '../payments/payment-settlement.service';
 import { Payment } from '../payments/payment.entity';
+import { PaymentsService } from '../payments/payments.service';
 import { Payout } from '../payouts/payout.entity';
 import { PayoutsService } from '../payouts/payouts.service';
 import { Transaction } from '../transactions/transaction.entity';
 import { TransactionStatus } from '../transactions/transaction.types';
+import { TransactionsService } from '../transactions/transactions.service';
 import {
   ReconciliationIssue,
   ReconciliationItem,
@@ -88,7 +90,9 @@ export class ReconciliationService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly providers: PaymentProvidersService,
     private readonly settlement: PaymentSettlementService,
+    private readonly payments: PaymentsService,
     private readonly payouts: PayoutsService,
+    private readonly transactions: TransactionsService,
     private readonly ledger: LedgerService,
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
@@ -353,11 +357,7 @@ export class ReconciliationService {
     found: NewItem[],
   ): Promise<number> {
     const theirs = await capability.listPayments(range);
-    const ours = await this.dataSource.manager
-      .createQueryBuilder(Payment, 'payment')
-      .where('payment.provider = :provider', { provider })
-      .andWhere('payment.createdAt >= :from AND payment.createdAt < :to', range)
-      .getMany();
+    const ours = await this.payments.listForProvider(provider, range);
     const oursByReference = new Map(
       ours
         .filter((payment) => payment.providerReference)
@@ -370,10 +370,10 @@ export class ReconciliationService {
       // Outside our window (a boundary) still counts: look it up directly.
       const payment =
         oursByReference.get(record.providerReference) ??
-        (await this.dataSource.manager.findOneBy(Payment, {
+        (await this.payments.findByProviderReference(
           provider,
-          providerReference: record.providerReference,
-        }));
+          record.providerReference,
+        ));
       if (!payment) {
         if (COLLECTED.has(record.status)) {
           found.push({
@@ -494,11 +494,7 @@ export class ReconciliationService {
     const theirs = capability.listPayouts
       ? await capability.listPayouts(range)
       : [];
-    const ours = await this.dataSource.manager
-      .createQueryBuilder(Payout, 'payout')
-      .where('payout.provider = :provider', { provider })
-      .andWhere('payout.createdAt >= :from AND payout.createdAt < :to', range)
-      .getMany();
+    const ours = await this.payouts.listForProvider(provider, range);
     const oursByReference = new Map(ours.map((p) => [p.reference, p]));
 
     const seen = new Set<string>();
@@ -506,10 +502,7 @@ export class ReconciliationService {
       seen.add(record.reference);
       const payout =
         oursByReference.get(record.reference) ??
-        (await this.dataSource.manager.findOneBy(Payout, {
-          provider,
-          reference: record.reference,
-        }));
+        (await this.payouts.findByReference(provider, record.reference));
       if (!payout) {
         if (record.status !== 'failed') {
           found.push({
@@ -656,10 +649,7 @@ export class ReconciliationService {
         provider: null,
       });
     }
-    const currencies = await this.dataSource.query<{ currency: string }[]>(
-      'SELECT DISTINCT currency FROM ledger_accounts ORDER BY currency',
-    );
-    for (const { currency } of currencies) {
+    for (const currency of await this.ledger.currencies()) {
       const trial = await this.ledger.trialBalance(currency);
       if (trial.debit !== trial.credit) {
         found.push({
@@ -681,15 +671,11 @@ export class ReconciliationService {
   // ---- Helpers ----------------------------------------------------------------
 
   private transactionOf(payment: Payment): Promise<Transaction> {
-    return this.dataSource.manager.findOneByOrFail(Transaction, {
-      id: payment.transactionId,
-    });
+    return this.transactions.getById(payment.transactionId);
   }
 
   private transactionOfPayout(payout: Payout): Promise<Transaction> {
-    return this.dataSource.manager.findOneByOrFail(Transaction, {
-      id: payout.transactionId,
-    });
+    return this.transactions.getById(payout.transactionId);
   }
 
   private paymentView(

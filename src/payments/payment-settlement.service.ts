@@ -4,7 +4,6 @@ import { DataSource, EntityManager } from 'typeorm';
 import { toCurrencyCode } from '../common/money/currency';
 import { paymentsConfig } from '../config/payments.config';
 import type { PaymentsConfig } from '../config/payments.config';
-import { FxQuote } from '../fx/fx-quote.entity';
 import { FxService } from '../fx/fx.service';
 import { OutboxService } from '../outbox/outbox.service';
 import {
@@ -12,7 +11,6 @@ import {
   VerifyPaymentResult,
 } from '../payment-providers/payment-provider';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
-import { Transaction } from '../transactions/transaction.entity';
 import { TransactionStatus } from '../transactions/transaction.types';
 import { TransactionsService } from '../transactions/transactions.service';
 import { WalletsService } from '../wallets/wallets.service';
@@ -59,11 +57,8 @@ export class PaymentSettlementService {
 
     let verified: VerifyPaymentResult;
     try {
-      const transaction = await this.dataSource.manager.findOneByOrFail(
-        Transaction,
-        {
-          id: payment.transactionId,
-        },
+      const transaction = await this.transactions.getById(
+        payment.transactionId,
       );
       verified = await this.providers.get(payment.provider).verifyPayment({
         reference: transaction.reference,
@@ -117,7 +112,7 @@ export class PaymentSettlementService {
    */
   private async credit(payment: Payment): Promise<SettlementOutcome> {
     return this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         payment.transactionId,
       );
@@ -222,9 +217,10 @@ export class PaymentSettlementService {
     manager: EntityManager,
     payment: Payment,
   ): Promise<string> {
-    const quote = await manager.findOneByOrFail(FxQuote, {
-      id: payment.fxQuoteId ?? '',
-    });
+    const quote = await this.fx.getQuoteWithin(
+      manager,
+      payment.fxQuoteId ?? '',
+    );
     if (quote.consumedAt !== null || quote.expiresAt.getTime() > Date.now()) {
       return quote.id;
     }
@@ -236,16 +232,14 @@ export class PaymentSettlementService {
       sourceAmount: payment.amount,
     });
     await manager.update(Payment, payment.id, { fxQuoteId: requote.id });
-    await manager
-      .createQueryBuilder()
-      .update(Transaction)
-      .set({
-        metadata: () =>
-          `metadata || jsonb_build_object('lateFxRequote', true, 'originalFxQuoteId', :originalFxQuoteId::text)`,
-      })
-      .where('id = :id', { id: payment.transactionId })
-      .setParameter('originalFxQuoteId', quote.id)
-      .execute();
+    await this.transactions.mergeMetadataWithin(
+      manager,
+      payment.transactionId,
+      {
+        lateFxRequote: true,
+        originalFxQuoteId: quote.id,
+      },
+    );
     this.logger.warn(
       `Payment ${payment.id} settled after its FX quote expired; re-quoted`,
     );
@@ -258,7 +252,7 @@ export class PaymentSettlementService {
     failureReason: string,
   ): Promise<SettlementOutcome> {
     return this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         payment.transactionId,
       );
@@ -292,16 +286,5 @@ export class PaymentSettlementService {
       });
       return 'failed';
     });
-  }
-
-  private async lockTransaction(
-    manager: EntityManager,
-    id: string,
-  ): Promise<Transaction> {
-    return manager
-      .createQueryBuilder(Transaction, 'txn')
-      .setLock('pessimistic_write')
-      .where('txn.id = :id', { id })
-      .getOneOrFail();
   }
 }

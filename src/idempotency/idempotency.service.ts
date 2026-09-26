@@ -106,6 +106,16 @@ export class IdempotencyService {
     });
   }
 
+  /** Removes expired keys (maintenance). Returns how many. */
+  async deleteExpired(): Promise<number> {
+    const result = await this.keys
+      .createQueryBuilder()
+      .delete()
+      .where('expires_at < now()')
+      .execute();
+    return result.affected ?? 0;
+  }
+
   private async tryInsert(request: RequestFingerprint): Promise<string | null> {
     const now = Date.now();
     const result = await this.keys

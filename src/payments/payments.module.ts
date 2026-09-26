@@ -4,7 +4,6 @@ import { FxModule } from '../fx/fx.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { OutboxModule } from '../outbox/outbox.module';
 import { PaymentProvidersModule } from '../payment-providers/payment-providers.module';
-import { Transaction } from '../transactions/transaction.entity';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
@@ -21,7 +20,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
 @Module({
   imports: [
     OrganizationsModule,
-    TypeOrmModule.forFeature([Payment, Transaction]),
+    TypeOrmModule.forFeature([Payment]),
     IdempotencyModule,
     OutboxModule,
     PaymentProvidersModule,

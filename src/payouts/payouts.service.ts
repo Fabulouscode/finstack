@@ -20,6 +20,7 @@ import { OutboxService } from '../outbox/outbox.service';
 import {
   PaymentProviderError,
   PayoutResult,
+  TimeRange,
 } from '../payment-providers/payment-provider';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { Transaction } from '../transactions/transaction.entity';
@@ -163,10 +164,7 @@ export class PayoutsService {
     if (!found) {
       throw new PayoutNotFoundException();
     }
-    const transaction = await this.dataSource.manager.findOneByOrFail(
-      Transaction,
-      { id: found.transactionId },
-    );
+    const transaction = await this.transactions.getById(found.transactionId);
     // Re-read after the status, so a settled payout never shows the
     // provider details as they were before it settled.
     const payout = await this.payouts.findOneByOrFail({ id: payoutId });
@@ -175,6 +173,19 @@ export class PayoutsService {
       { id: payout.destinationId },
     );
     return { payout, transaction, destination };
+  }
+
+  /** Payouts routed to `provider` and created in the range (reconciliation). */
+  listForProvider(provider: string, range: TimeRange): Promise<Payout[]> {
+    return this.payouts
+      .createQueryBuilder('payout')
+      .where('payout.provider = :provider', { provider })
+      .andWhere('payout.createdAt >= :from AND payout.createdAt < :to', range)
+      .getMany();
+  }
+
+  findByReference(provider: string, reference: string): Promise<Payout | null> {
+    return this.payouts.findOneBy({ provider, reference });
   }
 
   /** Re-checks a payout with its provider (admin action; safe to repeat). */
@@ -200,8 +211,11 @@ export class PayoutsService {
   async syncStale(olderThanMs: number, limit = 50): Promise<number> {
     const stale = await this.payouts
       .createQueryBuilder('payout')
-      .innerJoin(Transaction, 'txn', 'txn.id = payout.transactionId')
-      .where('txn.status = :status', { status: TransactionStatus.Processing })
+      .where(
+        this.transactions.statusIn('payout.transaction_id', [
+          TransactionStatus.Processing,
+        ]),
+      )
       .andWhere('payout.createdAt < :before', {
         before: new Date(Date.now() - olderThanMs),
       })
@@ -405,16 +419,14 @@ export class PayoutsService {
       SystemAccounts.externalClearing(payout.currency),
     );
     await this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         payout.transactionId,
       );
       if (transaction.status !== TransactionStatus.Processing) {
         return; // settled concurrently
       }
-      const wallet = await manager.findOneByOrFail(Wallet, {
-        id: payout.walletId,
-      });
+      const wallet = await this.wallets.getWallet(payout.walletId);
       const posted = await this.ledger.postWithin(manager, {
         reference: `payout:${payout.reference}`,
         description: `Payout ${payout.reference}`,
@@ -454,7 +466,7 @@ export class PayoutsService {
     failureReason: string,
   ): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         payout.transactionId,
       );
@@ -487,16 +499,14 @@ export class PayoutsService {
       SystemAccounts.externalClearing(payout.currency),
     );
     await this.dataSource.transaction(async (manager) => {
-      const transaction = await this.lockTransaction(
+      const transaction = await this.transactions.lockWithin(
         manager,
         payout.transactionId,
       );
       if (transaction.status !== TransactionStatus.Successful) {
         return; // never completed (released instead) or already reversed
       }
-      const wallet = await manager.findOneByOrFail(Wallet, {
-        id: payout.walletId,
-      });
+      const wallet = await this.wallets.getWallet(payout.walletId);
       await this.ledger.postWithin(manager, {
         reference: `payout-reversal:${payout.reference}`,
         description: `Reversal of payout ${payout.reference}`,
@@ -548,16 +558,5 @@ export class PayoutsService {
       throw new PayoutNotFoundException();
     }
     return this.view(payout.id);
-  }
-
-  private lockTransaction(
-    manager: EntityManager,
-    id: string,
-  ): Promise<Transaction> {
-    return manager
-      .createQueryBuilder(Transaction, 'txn')
-      .setLock('pessimistic_write')
-      .where('txn.id = :id', { id })
-      .getOneOrFail();
   }
 }

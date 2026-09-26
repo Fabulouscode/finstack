@@ -118,6 +118,14 @@ export class LedgerService {
     });
   }
 
+  /** A posted ledger transaction, read on the caller's database transaction. */
+  getTransactionWithin(
+    manager: EntityManager,
+    id: string,
+  ): Promise<LedgerTransaction> {
+    return manager.findOneByOrFail(LedgerTransaction, { id });
+  }
+
   getAccounts(ids: string[]): Promise<LedgerAccount[]> {
     return this.dataSource.manager.findBy(LedgerAccount, { id: In(ids) });
   }
@@ -336,6 +344,14 @@ export class LedgerService {
    * Sum of debit-normal vs credit-normal balances per currency. In a
    * consistent double-entry ledger the two sides are always equal.
    */
+  /** Every currency that has ledger accounts. */
+  async currencies(): Promise<string[]> {
+    const rows = await this.dataSource.query<{ currency: string }[]>(
+      'SELECT DISTINCT currency FROM ledger_accounts ORDER BY currency',
+    );
+    return rows.map((row) => row.currency);
+  }
+
   async trialBalance(
     currency: string,
   ): Promise<{ debit: bigint; credit: bigint }> {

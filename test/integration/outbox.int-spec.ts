@@ -2,7 +2,7 @@ import { TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { jobsConfig } from '../../src/config/jobs.config';
-import { MaintenanceService } from '../../src/maintenance/maintenance.service';
+import { RETENTION } from '../../src/maintenance/maintenance.service';
 import {
   OutboxEvent,
   OutboxEventStatus,
@@ -127,15 +127,18 @@ describe('Outbox (integration)', () => {
     await expect(relay.tick()).resolves.toBe(1);
   });
 
-  it('cleans up expired and long-finished rows', async () => {
+  it('cleans up long-published events', async () => {
     await addEvents(2);
     await dataSource.query(
       `UPDATE outbox_events SET status = 'published', published_at = now() - interval '8 days'`,
     );
 
-    const result = await new MaintenanceService(dataSource).cleanup();
-
-    expect(result.outboxEvents).toBe(2);
+    await expect(
+      outbox.deletePublishedWithin(
+        dataSource.manager,
+        RETENTION.outboxEventsDays,
+      ),
+    ).resolves.toBe(2);
     await expect(dataSource.getRepository(OutboxEvent).count()).resolves.toBe(
       0,
     );

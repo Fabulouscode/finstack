@@ -10,6 +10,7 @@ import {
 import { AppException } from '../common/http/app.exception';
 import { OwnerRef, ownerWhere } from '../common/owner/owner';
 import type { Cursor } from '../common/pagination/cursor';
+import { sqlList } from '../ledger/ledger.types';
 import { Transaction } from './transaction.entity';
 import { assertTransition, TransactionStatus } from './transaction.types';
 
@@ -93,6 +94,62 @@ export class TransactionsService {
     );
   }
 
+  async getById(id: string, manager?: EntityManager): Promise<Transaction> {
+    const transaction = await (manager ?? this.transactions.manager).findOneBy(
+      Transaction,
+      { id },
+    );
+    if (!transaction) {
+      throw new TransactionNotFoundException();
+    }
+    return transaction;
+  }
+
+  findByReference(reference: string): Promise<Transaction | null> {
+    return this.transactions.findOneBy({ reference });
+  }
+
+  /**
+   * Locks a transaction row (SELECT ... FOR UPDATE) for the rest of the
+   * caller's database transaction; used to serialise settlement of the
+   * payment, refund or payout it belongs to.
+   */
+  async lockWithin(manager: EntityManager, id: string): Promise<Transaction> {
+    const transaction = await manager
+      .createQueryBuilder(Transaction, 'txn')
+      .setLock('pessimistic_write')
+      .where('txn.id = :id', { id })
+      .getOne();
+    if (!transaction) {
+      throw new TransactionNotFoundException();
+    }
+    return transaction;
+  }
+
+  /** Adds keys to a transaction's metadata, atomically (jsonb merge). */
+  async mergeMetadataWithin(
+    manager: EntityManager,
+    id: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder()
+      .update(Transaction)
+      .set({ metadata: () => 'metadata || :patch::jsonb' })
+      .where('id = :id', { id })
+      .setParameter('patch', JSON.stringify(metadata))
+      .execute();
+  }
+
+  /**
+   * A SQL condition for other modules' queries: "the transaction referenced
+   * by `column` has one of `statuses`", so they can filter by status without
+   * knowing this module's table.
+   */
+  statusIn(column: string, statuses: TransactionStatus[]): string {
+    return `EXISTS (SELECT 1 FROM transactions txn_status WHERE txn_status.id = ${column} AND txn_status.status IN (${sqlList(statuses)}))`;
+  }
+
   /**
    * Moves a transaction to a new status under a row lock, validating the
    * transition first. The database trigger rejects invalid transitions too.
@@ -103,14 +160,7 @@ export class TransactionsService {
     to: TransactionStatus,
     patch: TransitionPatch = {},
   ): Promise<Transaction> {
-    const current = await manager
-      .createQueryBuilder(Transaction, 'txn')
-      .setLock('pessimistic_write')
-      .where('txn.id = :id', { id: transactionId })
-      .getOne();
-    if (!current) {
-      throw new TransactionNotFoundException();
-    }
+    const current = await this.lockWithin(manager, transactionId);
     assertTransition(current.status, to);
 
     await manager.update(Transaction, transactionId, { ...patch, status: to });
