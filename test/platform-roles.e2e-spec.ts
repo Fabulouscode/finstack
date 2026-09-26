@@ -30,6 +30,24 @@ describe('Platform roles (e2e)', () => {
 
   const reason = { reason: 'Team change' };
 
+  /**
+   * After two admins race to remove each other, exactly one wins and one
+   * active admin remains. The loser is refused either by the last-admin
+   * check (409) or, if the winner committed first, by the auth guard
+   * because they are no longer an active admin (403): both are correct.
+   */
+  const expectOneAdminSurvives = async (
+    results: request.Response[],
+  ): Promise<void> => {
+    const [winner, loser] = results.map((r) => r.status).sort();
+    expect(winner).toBe(200);
+    expect([403, 409]).toContain(loser);
+    const [row] = await dataSource.query<{ count: number }[]>(
+      `SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND status = 'active'`,
+    );
+    expect(row?.count).toBe(1);
+  };
+
   /** Registers a user and gives them a staff role through the API. */
   const staff = async (
     email: string,
@@ -220,14 +238,7 @@ describe('Platform roles (e2e)', () => {
           `/v1/admin/users/${admin.user.id}/role`,
         ).send({ role: 'user', ...reason }),
       ]);
-      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-      expect(results.find((r) => r.status === 409)?.body).toMatchObject({
-        code: 'LAST_ADMIN',
-      });
-      const [row] = await dataSource.query<{ count: number }[]>(
-        `SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND status = 'active'`,
-      );
-      expect(row?.count).toBe(1);
+      await expectOneAdminSurvives(results);
     });
 
     it('never suspends the last admin, even when admins race', async () => {
@@ -244,7 +255,7 @@ describe('Platform roles (e2e)', () => {
           `/v1/admin/users/${admin.user.id}/suspend`,
         ).send(reason),
       ]);
-      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      await expectOneAdminSurvives(results);
     });
 
     it('lets only admins suspend staff', async () => {
