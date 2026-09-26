@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch or PR supersedes a running build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, types, build, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  database:
+    name: Migrations, integration and e2e tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: finstack
+          POSTGRES_PASSWORD: finstack
+          POSTGRES_DB: finstack_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U finstack -d finstack_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      # CI-only values; nothing here is a real secret.
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
+      DATABASE_USER: finstack
+      DATABASE_PASSWORD: finstack
+      DATABASE_NAME: finstack_test
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: ci-only-access-token-secret-0123456789abcdef
+      MOCK_PROVIDER_WEBHOOK_SECRET: ci-only-mock-webhook-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Apply migrations
+        run: npm run typeorm -- migration:run
+
+      - name: Check the schema matches the entities
+        # Fails if an entity changed without a migration.
+        run: npm run typeorm -- migration:generate src/database/migrations/Drift --check
+
+      - name: Integration tests
+        run: npm run test:int
+
+      - name: End-to-end tests
+        run: npm run test:e2e
