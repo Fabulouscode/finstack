@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { FeesModule } from '../fees/fees.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
@@ -18,6 +19,7 @@ import { PayoutsService } from './payouts.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Payout, PayoutDestination]),
+    FeesModule,
     IdempotencyModule,
     LedgerModule,
     OrganizationsModule,

@@ -15,6 +15,7 @@ import {
 import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import type { CurrencyCode } from '../../common/money/currency';
 import { MAX_API_AMOUNT, toApiAmount } from '../../common/money/money';
+import { FeeDto } from '../../fees/dto/fee.dto';
 import { KNOWN_PAYMENT_PROVIDERS } from '../../config/payments.config';
 import { TransactionStatus } from '../../transactions/transaction.types';
 import { PayoutDestination } from '../payout-destination.entity';
@@ -173,6 +174,13 @@ export class PayoutResponseDto {
   @ApiProperty({ format: 'uuid' })
   walletId: string;
 
+  @ApiProperty({
+    type: FeeDto,
+    nullable: true,
+    description: 'Added on top of the amount; null when free',
+  })
+  fee: FeeDto | null;
+
   @ApiProperty({ type: PayoutDestinationResponseDto })
   destination: PayoutDestinationResponseDto;
 
@@ -207,6 +215,7 @@ export class PayoutResponseDto {
       amount: toApiAmount(payout.amount),
       currency: payout.currency,
       walletId: payout.walletId,
+      fee: FeeDto.from(transaction.feeAmount, transaction.feeCurrency),
       destination: PayoutDestinationResponseDto.from(destination),
       provider: payout.provider,
       providerReference: payout.providerReference,

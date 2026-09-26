@@ -11,6 +11,8 @@ import {
   ownerWhere,
   toOwner,
 } from '../common/owner/owner';
+import { FeeOperation } from '../fees/fee-rule.entity';
+import { FeeQuote, FeesService } from '../fees/fees.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { CurrencyMismatchException } from '../ledger/ledger.errors';
 import { LedgerService } from '../ledger/ledger.service';
@@ -90,6 +92,7 @@ export class PayoutsService {
     private readonly ledger: LedgerService,
     private readonly outbox: OutboxService,
     private readonly audit: AuditService,
+    private readonly fees: FeesService,
   ) {}
 
   /** Idempotent by Idempotency-Key (per owner), like payments. */
@@ -114,6 +117,13 @@ export class PayoutsService {
     const wallet = await this.sourceWallet(owner, destination, input.walletId);
     // Fails fast if the provider can no longer pay out in this currency.
     this.providers.payoutsOf(destination.provider);
+    // Paid on top by the sender; held with the amount.
+    const fee = await this.fees.quote({
+      operation: FeeOperation.Payout,
+      currency: wallet.currency,
+      amount: input.amount,
+      organizationId: owner.kind === 'organization' ? owner.id : null,
+    });
 
     let payout: Payout;
     try {
@@ -124,6 +134,7 @@ export class PayoutsService {
           wallet,
           destination,
           input,
+          fee,
           idempotencyKey,
         ),
       );
@@ -273,6 +284,7 @@ export class PayoutsService {
     wallet: Wallet,
     destination: PayoutDestination,
     input: RequestPayoutInput,
+    fee: FeeQuote,
     idempotencyKey: string,
   ): Promise<Payout> {
     const reference = generatePayoutReference();
@@ -288,11 +300,19 @@ export class PayoutsService {
         input.narration ??
         `Payout to ${destination.accountName} ****${destination.accountNumberLast4}`,
       metadata: { payoutReference: reference, destinationId: destination.id },
+      ...(fee.amount > 0n
+        ? {
+            feeAmount: fee.amount,
+            feeCurrency: fee.currency,
+            feeRuleId: fee.ruleId,
+          }
+        : {}),
     });
 
-    // Locks the wallet (and requires it active); fails if funds are short.
+    // Locks the wallet (and requires it active); fails if the amount and
+    // its fee aren't covered.
     await this.wallets.reserveWithin(manager, wallet.id, {
-      amount: input.amount,
+      amount: input.amount + fee.amount,
       reference: `payout-hold:${reference}`,
       description: `Hold for payout ${reference}`,
       metadata: { transactionId: transaction.id },
@@ -456,6 +476,19 @@ export class PayoutsService {
           { accountId: clearing.id, direction: Credit, amount: payout.amount },
         ],
       });
+      if (transaction.feeAmount > 0n) {
+        await this.wallets.collectFeeWithin(
+          manager,
+          payout.walletId,
+          'reserved',
+          {
+            amount: transaction.feeAmount,
+            reference: `fee:payout:${payout.reference}`,
+            description: `Fee for payout ${payout.reference}`,
+            metadata: { payoutId: payout.id },
+          },
+        );
+      }
       await this.transactions.transition(
         manager,
         transaction.id,
@@ -489,7 +522,7 @@ export class PayoutsService {
         return;
       }
       await this.wallets.releaseWithin(manager, payout.walletId, {
-        amount: payout.amount,
+        amount: payout.amount + transaction.feeAmount,
         reference: `payout-release:${payout.reference}`,
         description: `Release hold for failed payout ${payout.reference}`,
       });
@@ -536,6 +569,14 @@ export class PayoutsService {
           },
         ],
       });
+      if (transaction.feeAmount > 0n) {
+        await this.wallets.refundFeeWithin(manager, payout.walletId, {
+          amount: transaction.feeAmount,
+          reference: `fee-refund:payout:${payout.reference}`,
+          description: `Fee refund for reversed payout ${payout.reference}`,
+          metadata: { payoutId: payout.id },
+        });
+      }
       await this.transactions.transition(
         manager,
         transaction.id,

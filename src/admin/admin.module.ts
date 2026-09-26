@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { LedgerModule } from '../ledger/ledger.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { OutboundWebhooksModule } from '../outbound-webhooks/outbound-webhooks.module';
 import { PayoutsModule } from '../payouts/payouts.module';
@@ -21,6 +22,7 @@ import { AdminService } from './admin.service';
 @Module({
   imports: [
     AuthModule,
+    LedgerModule,
     OrganizationsModule,
     OutboundWebhooksModule,
     PayoutsModule,

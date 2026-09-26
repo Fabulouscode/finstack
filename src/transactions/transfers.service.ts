@@ -2,6 +2,8 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AppException } from '../common/http/app.exception';
+import { FeeOperation } from '../fees/fee-rule.entity';
+import { FeesService } from '../fees/fees.service';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { OutboxService } from '../outbox/outbox.service';
 import { UsersService } from '../users/users.service';
@@ -72,6 +74,7 @@ export class TransfersService {
     private readonly wallets: WalletsService,
     private readonly users: UsersService,
     private readonly outbox: OutboxService,
+    private readonly fees: FeesService,
   ) {}
 
   async transfer(
@@ -109,6 +112,13 @@ export class TransfersService {
       throw new RecipientCannotReceiveException(currency);
     }
 
+    // Paid by the sender, on top of the amount.
+    const fee = await this.fees.quote({
+      operation: FeeOperation.Transfer,
+      currency,
+      amount: input.amount,
+    });
+
     try {
       return await this.dataSource.transaction(async (manager) => {
         const transaction = await this.transactions.create(manager, {
@@ -122,6 +132,13 @@ export class TransfersService {
           currency,
           idempotencyKey,
           description: input.description ?? null,
+          ...(fee.amount > 0n
+            ? {
+                feeAmount: fee.amount,
+                feeCurrency: fee.currency,
+                feeRuleId: fee.ruleId,
+              }
+            : {}),
         });
 
         const posted = await this.wallets.transferWithin(manager, from, to, {
@@ -130,6 +147,15 @@ export class TransfersService {
           description: input.description ?? 'Transfer',
           metadata: { transactionId: transaction.id },
         });
+        if (fee.amount > 0n) {
+          // Fails (and rolls everything back) if amount + fee isn't covered.
+          await this.wallets.collectFeeWithin(manager, from.id, 'available', {
+            amount: fee.amount,
+            reference: `fee:transfer:${transaction.reference}`,
+            description: `Fee for transfer ${transaction.reference}`,
+            metadata: { transactionId: transaction.id },
+          });
+        }
 
         const completed = await this.transactions.transition(
           manager,
@@ -151,6 +177,7 @@ export class TransfersService {
             recipientUserId: recipient.id,
             amount: completed.amount.toString(),
             currency: completed.currency,
+            fee: fee.amount.toString(),
           },
         });
         return completed;

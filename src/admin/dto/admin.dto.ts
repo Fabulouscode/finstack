@@ -138,6 +138,20 @@ export class AdminOverviewResponseDto {
   })
   walletBalances: Record<string, BalanceTotalsDto>;
 
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: {
+      type: 'object',
+      additionalProperties: { type: 'number' },
+    },
+    description: 'Earned by the platform, per currency (minor units)',
+    example: { fees: { USD: 32000 }, fx: { USD: 1500 } },
+  })
+  revenue: {
+    fees: Record<string, number>;
+    fx: Record<string, number>;
+  };
+
   @ApiProperty({ type: AttentionDto })
   attention: AttentionDto;
 
@@ -155,9 +169,22 @@ export class AdminOverviewResponseDto {
           },
         ]),
       ),
+      revenue: {
+        fees: amounts(overview.revenue.fees),
+        fx: amounts(overview.revenue.fx),
+      },
       attention: overview.attention,
     };
   }
+}
+
+function amounts(values: Record<string, bigint>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(values).map(([currency, amount]) => [
+      currency,
+      toApiAmount(amount),
+    ]),
+  );
 }
 
 export { BalanceTotalsDto };

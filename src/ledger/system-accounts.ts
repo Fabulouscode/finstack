@@ -31,6 +31,14 @@ export const SystemAccounts = {
     allowNegativeBalance: true,
   }),
 
+  /** Fees charged on payments, payouts and transfers. */
+  feeRevenue: (currency: string): SystemAccountDefinition => ({
+    code: `system:fee-revenue:${currency}`,
+    name: `Fee revenue (${currency})`,
+    type: LedgerAccountType.Revenue,
+    currency,
+  }),
+
   /** Spread earned on conversions. */
   fxRevenue: (currency: string): SystemAccountDefinition => ({
     code: `system:fx-revenue:${currency}`,

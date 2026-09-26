@@ -178,8 +178,22 @@ export class PaymentSettlementService {
           completedAt: new Date(),
         },
       );
+      // The fee locked at initialisation, from the same balance the credit
+      // went to (never more than was credited, e.g. after a late re-quote).
+      const fee =
+        transaction.feeAmount < credited.amount
+          ? transaction.feeAmount
+          : credited.amount;
+      if (fee > 0n) {
+        await this.wallets.collectFeeWithin(manager, payment.walletId, into, {
+          amount: fee,
+          reference: `fee:${reference}`,
+          description: `Fee for payment ${transaction.reference}`,
+          metadata: { transactionId: transaction.id, paymentId: payment.id },
+        });
+      }
       await manager.update(Payment, payment.id, {
-        pendingAmount: holdMs > 0 ? credited.amount : 0n,
+        pendingAmount: holdMs > 0 ? credited.amount - fee : 0n,
         fundsAvailableAt,
       });
       // Committed atomically with the credit: the event exists iff the money moved.
@@ -200,6 +214,10 @@ export class PaymentSettlementService {
           },
           credited: {
             amount: credited.amount.toString(),
+            currency: credited.currency,
+          },
+          fee: {
+            amount: fee.toString(),
             currency: credited.currency,
           },
           fundsAvailableAt: fundsAvailableAt.toISOString(),

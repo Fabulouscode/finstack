@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AuditAction, AuditActionName } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { RefreshTokenService } from '../auth/tokens/refresh-token.service';
+import { LedgerService } from '../ledger/ledger.service';
 import {
   Organization,
   OrganizationStatus,
@@ -33,6 +34,8 @@ export interface AdminOverview {
     string,
     { available: bigint; pending: bigint; reserved: bigint }
   >;
+  /** Earned by the platform, per currency (minor units). */
+  revenue: { fees: Record<string, bigint>; fx: Record<string, bigint> };
   attention: {
     processingPayouts: { count: number; oldest: Date | null };
     processingRefunds: { count: number; oldest: Date | null };
@@ -61,6 +64,7 @@ export class AdminService {
     private readonly inboundWebhooks: WebhooksService,
     private readonly outboundWebhooks: OutboundWebhooksService,
     private readonly audit: AuditService,
+    private readonly ledger: LedgerService,
   ) {}
 
   async getUser(userId: string): Promise<User> {
@@ -165,6 +169,8 @@ export class AdminService {
       openReconciliationItems,
       failedInboundWebhooks,
       outbound,
+      feeRevenue,
+      fxRevenue,
     ] = await Promise.all([
       this.users.countByStatus(),
       this.organizations.countByStatus(),
@@ -174,11 +180,14 @@ export class AdminService {
       this.reconciliation.countOpenItems(),
       this.inboundWebhooks.countByStatus(WebhookEventStatus.Failed),
       this.outboundWebhooks.stats(),
+      this.ledger.systemBalances('system:fee-revenue:'),
+      this.ledger.systemBalances('system:fx-revenue:'),
     ]);
     return {
       users,
       organizations,
       walletBalances,
+      revenue: { fees: feeRevenue, fx: fxRevenue },
       attention: {
         processingPayouts,
         processingRefunds,

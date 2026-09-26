@@ -13,6 +13,7 @@ import {
 import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import type { CurrencyCode } from '../../common/money/currency';
 import { MAX_API_AMOUNT, toApiAmount } from '../../common/money/money';
+import { FeeDto } from '../../fees/dto/fee.dto';
 import { KNOWN_PAYMENT_PROVIDERS } from '../../config/payments.config';
 import { formatRate, parseRate } from '../../fx/fx-math';
 import { TransactionStatus } from '../../transactions/transaction.types';
@@ -155,6 +156,14 @@ export class PaymentResponseDto {
   completedAt: Date | null;
 
   @ApiProperty({
+    type: FeeDto,
+    nullable: true,
+    description:
+      "Taken from what the wallet receives, in the wallet's currency; null when free",
+  })
+  fee: FeeDto | null;
+
+  @ApiProperty({
     format: 'date-time',
     nullable: true,
     description:
@@ -199,6 +208,7 @@ export class PaymentResponseDto {
       failureCode: transaction.failureCode,
       createdAt: payment.createdAt,
       completedAt: transaction.completedAt,
+      fee: FeeDto.from(transaction.feeAmount, transaction.feeCurrency),
       fundsAvailableAt: payment.fundsAvailableAt,
       heldAmount: toApiAmount(payment.pendingAmount),
     };

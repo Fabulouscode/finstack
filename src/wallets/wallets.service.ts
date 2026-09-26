@@ -660,6 +660,65 @@ export class WalletsService {
     ];
   }
 
+  /**
+   * Collects a fee from one of the wallet's balances into fee revenue,
+   * inside the caller's transaction (e.g. with the payment credit it
+   * applies to). Fails if the balance can't cover it.
+   */
+  async collectFeeWithin(
+    manager: EntityManager,
+    walletId: string,
+    from: 'available' | 'pending' | 'reserved',
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    const wallet = await this.getWallet(walletId);
+    const revenue = await this.ledger.ensureSystemAccount(
+      SystemAccounts.feeRevenue(wallet.currency),
+    );
+    const accountId =
+      from === 'pending'
+        ? wallet.pendingAccountId
+        : from === 'reserved'
+          ? wallet.reservedAccountId
+          : wallet.availableAccountId;
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: [
+        { accountId, direction: Debit, amount: movement.amount },
+        { accountId: revenue.id, direction: Credit, amount: movement.amount },
+      ],
+    });
+  }
+
+  /** Gives a collected fee back to the wallet's available balance. */
+  async refundFeeWithin(
+    manager: EntityManager,
+    walletId: string,
+    movement: MoneyMovement,
+  ): Promise<PostedTransaction> {
+    const wallet = await this.getWallet(walletId);
+    const revenue = await this.ledger.ensureSystemAccount(
+      SystemAccounts.feeRevenue(wallet.currency),
+    );
+    return this.ledger.postWithin(manager, {
+      reference: movement.reference,
+      description: movement.description,
+      currency: wallet.currency,
+      metadata: { ...movement.metadata, walletIds: [walletId] },
+      entries: [
+        { accountId: revenue.id, direction: Debit, amount: movement.amount },
+        {
+          accountId: wallet.availableAccountId,
+          direction: Credit,
+          amount: movement.amount,
+        },
+      ],
+    });
+  }
+
   /** Releases a hold: reserved -> available. */
   async release(
     walletId: string,

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { FeesModule } from '../fees/fees.module';
 import { FxModule } from '../fx/fx.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { OutboxModule } from '../outbox/outbox.module';
@@ -19,6 +20,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
 
 @Module({
   imports: [
+    FeesModule,
     OrganizationsModule,
     TypeOrmModule.forFeature([Payment]),
     IdempotencyModule,

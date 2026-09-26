@@ -41,6 +41,9 @@ export type NewTransaction = Pick<
       | 'idempotencyKey'
       | 'description'
       | 'metadata'
+      | 'feeAmount'
+      | 'feeCurrency'
+      | 'feeRuleId'
     >
   >;
 
@@ -84,6 +87,9 @@ export class TransactionsService {
         providerReference: null,
         idempotencyKey: null,
         description: null,
+        feeAmount: 0n,
+        feeCurrency: null,
+        feeRuleId: null,
         failureCode: null,
         failureReason: null,
         completedAt: null,

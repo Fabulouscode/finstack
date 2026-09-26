@@ -13,6 +13,8 @@ import {
 } from '../common/owner/owner';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { FxQuote } from '../fx/fx-quote.entity';
+import { FeeOperation } from '../fees/fee-rule.entity';
+import { FeesService } from '../fees/fees.service';
 import { FxService } from '../fx/fx.service';
 import {
   PaymentProviderError,
@@ -66,6 +68,7 @@ export class PaymentsService {
     private readonly wallets: WalletsService,
     private readonly fx: FxService,
     private readonly users: UsersService,
+    private readonly fees: FeesService,
   ) {}
 
   /**
@@ -117,6 +120,15 @@ export class PaymentsService {
         })
       : null;
 
+    // The fee is on what the wallet receives (after conversion), taken from
+    // the credit, and locked now like the quote.
+    const fee = await this.fees.quoteCovered({
+      operation: FeeOperation.Payment,
+      currency: target.wallet.currency,
+      amount: quote ? quote.targetAmount : input.amount,
+      organizationId: owner.kind === 'organization' ? owner.id : null,
+    });
+
     let payment: Payment;
     try {
       payment = await this.dataSource.transaction(async (manager) => {
@@ -129,6 +141,13 @@ export class PaymentsService {
           currency: input.currency,
           idempotencyKey,
           description: `Payment via ${providerName}`,
+          ...(fee.amount > 0n
+            ? {
+                feeAmount: fee.amount,
+                feeCurrency: fee.currency,
+                feeRuleId: fee.ruleId,
+              }
+            : {}),
         });
         return manager.save(
           manager.create(Payment, {

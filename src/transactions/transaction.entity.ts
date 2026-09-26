@@ -10,6 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { bigintTransformer } from '../database/transformers';
+import { FeeRule } from '../fees/fee-rule.entity';
 import { LedgerTransaction } from '../ledger/ledger-transaction.entity';
 import { sqlList } from '../ledger/ledger.types';
 import { Organization } from '../organizations/organization.entity';
@@ -31,6 +32,10 @@ import { TransactionStatus, TransactionType } from './transaction.types';
   `"status" IN (${sqlList(Object.values(TransactionStatus))})`,
 )
 @Check('chk_transactions_amount_positive', `"amount" > 0`)
+@Check(
+  'chk_transactions_fee',
+  `"fee_amount" >= 0 AND ("fee_amount" = 0 OR "fee_currency" IS NOT NULL)`,
+)
 @Check('chk_transactions_currency', `"currency" ~ '^[A-Z]{3}$'`)
 // A successful transaction must point at the ledger movement that proves it.
 @Check(
@@ -138,6 +143,27 @@ export class Transaction {
 
   @Column({ type: 'char', length: 3 })
   currency: string;
+
+  /**
+   * Fee charged for this transaction, in `feeCurrency` (the wallet's; it
+   * differs from `currency` for converted payments). 0 when free.
+   */
+  @Column({ type: 'bigint', transformer: bigintTransformer, default: 0 })
+  feeAmount: bigint;
+
+  @Column({ type: 'char', length: 3, nullable: true })
+  feeCurrency: string | null;
+
+  /** The rule the fee came from (kept for audit when rules change). */
+  @Column({ type: 'uuid', nullable: true })
+  feeRuleId: string | null;
+
+  @ManyToOne(() => FeeRule, { onDelete: 'RESTRICT' })
+  @JoinColumn({
+    name: 'fee_rule_id',
+    foreignKeyConstraintName: 'fk_transactions_fee_rule',
+  })
+  feeRule?: FeeRule;
 
   @Column({ type: 'uuid', nullable: true })
   ledgerTransactionId: string | null;

@@ -364,6 +364,22 @@ export class LedgerService {
     );
   }
 
+  /**
+   * Balances of the system accounts whose code starts with `prefix` (e.g.
+   * `system:fee-revenue:`), per currency.
+   */
+  async systemBalances(prefix: string): Promise<Record<string, bigint>> {
+    const rows = await this.dataSource.query<
+      { currency: string; balance: string }[]
+    >(
+      `SELECT currency, balance FROM ledger_accounts WHERE code LIKE $1 ORDER BY currency`,
+      [`${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`],
+    );
+    return Object.fromEntries(
+      rows.map((row) => [row.currency, BigInt(row.balance)]),
+    );
+  }
+
   /** Every currency that has ledger accounts. */
   async currencies(): Promise<string[]> {
     const rows = await this.dataSource.query<{ currency: string }[]>(

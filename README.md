@@ -366,6 +366,32 @@ The Paystack and Stripe adapters are tested against local fakes of each API (`te
 
 Set `PAYMENT_SETTLEMENT_DELAY_SECONDS` and successful payments land in the wallet's **pending** balance. After the delay, a worker moves them to available (checked every minute). Until then they can't be transferred or paid out. Payments show `fundsAvailableAt` and `heldAmount`. Admins can end a hold early with `POST /v1/admin/payments/:id/release` (audited). A refund of a held payment is taken from its pending credit. See [ADR 0019](./docs/adr/0019-settlement-holds.md).
 
+## Fees
+
+Operators set prices as **fee rules**, with no code changes. Each rule applies to an operation (`payment`, `payout` or `transfer`) in a currency, with optional per-organization rates:
+
+```
+fee = fixed + amount × bps / 10 000 (rounded up), within [min, max]
+```
+
+```bash
+# 2.9% + 30¢ on USD payments; $1.00 per USD payout
+curl -X POST localhost:3000/v1/admin/fee-rules -H "Authorization: Bearer $ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"operation":"payment","currency":"USD","percentageBps":290,"fixedAmount":30}'
+curl -X POST localhost:3000/v1/admin/fee-rules -H "Authorization: Bearer $ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"operation":"payout","currency":"USD","fixedAmount":100}'
+```
+
+- **Payments:** the fee is taken from what the wallet receives, and locked when the payment starts.
+- **Transfers and payouts:** the fee is added on top, paid by the sender. A failed payout releases its fee, and a returned one refunds it.
+- **Ledger:** every fee posts to a `fee-revenue` ledger account per currency. The admin overview shows fee and FX revenue.
+- **History:** rules are never edited. A new rule supersedes the old one, and every transaction records the rule it was charged under.
+- **Quotes:** apps can show costs up front with `GET /v1/fees/quote?operation=payout&currency=USD&amount=10000`, or `/v1/organizations/:id/fees/quote` for an organization's own rates.
+
+See [ADR 0026](./docs/adr/0026-fees.md).
+
 ## Refunds
 
 | Endpoint (admin) | Description |

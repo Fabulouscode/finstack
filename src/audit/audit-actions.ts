@@ -27,6 +27,8 @@ export const AuditAction = {
   RefundRequested: 'refund.requested',
   RefundRetried: 'refund.retried',
   FxRateSet: 'fx.rate_set',
+  FeeRuleSet: 'fee_rule.set',
+  FeeRuleRetired: 'fee_rule.retired',
   ReconciliationItemResolved: 'reconciliation_item.resolved',
   WebhookReplayed: 'webhook.replayed',
   RefreshTokenReuseDetected: 'auth.refresh_token_reuse_detected',

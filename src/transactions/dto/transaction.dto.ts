@@ -1,3 +1,4 @@
+import { FeeDto } from '../../fees/dto/fee.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -108,6 +109,14 @@ export class TransactionResponseDto {
   })
   walletId: string | null;
 
+  @ApiProperty({
+    type: FeeDto,
+    nullable: true,
+    description:
+      'Fee charged, if any (added for transfers/payouts, deducted for payments)',
+  })
+  fee: FeeDto | null;
+
   @ApiProperty({ nullable: true, example: 'Dinner split' })
   description: string | null;
 
@@ -136,6 +145,10 @@ export class TransactionResponseDto {
       walletId: outgoing
         ? transaction.sourceWalletId
         : transaction.destinationWalletId,
+      fee:
+        outgoing || transaction.type === TransactionType.Payment
+          ? FeeDto.from(transaction.feeAmount, transaction.feeCurrency)
+          : null,
       description: transaction.description,
       failureCode: transaction.failureCode,
       createdAt: transaction.createdAt,
@@ -163,6 +176,7 @@ export function organizationTransactionDto(
     walletId: outgoing
       ? transaction.sourceWalletId
       : transaction.destinationWalletId,
+    fee: FeeDto.from(transaction.feeAmount, transaction.feeCurrency),
     description: transaction.description,
     failureCode: transaction.failureCode,
     createdAt: transaction.createdAt,
