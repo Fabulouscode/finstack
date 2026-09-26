@@ -16,7 +16,8 @@ import {
   ApiProperty,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor';
 import { organizationOwner } from '../common/owner/owner';
 import {
@@ -30,7 +31,6 @@ import {
   OrganizationStatus,
 } from '../organizations/organization.entity';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { UserRole } from '../users/user.entity';
 import { WalletResponseDto } from '../wallets/dto/wallet.dto';
 import { WalletsService } from '../wallets/wallets.service';
 import { AdminService } from './admin.service';
@@ -83,9 +83,12 @@ class AdminOrganizationDetailDto {
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ReadOrganizations)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/organizations')
 export class AdminOrganizationsController {
   constructor(
@@ -136,6 +139,7 @@ export class AdminOrganizationsController {
     };
   }
 
+  @RequirePermission(PlatformPermission.ManageOrganizations)
   @Post(':organizationId/suspend')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -160,6 +164,7 @@ export class AdminOrganizationsController {
     );
   }
 
+  @RequirePermission(PlatformPermission.ManageOrganizations)
   @Post(':organizationId/reactivate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reactivate a suspended organization' })

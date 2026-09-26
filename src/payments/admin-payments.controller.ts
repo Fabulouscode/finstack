@@ -12,19 +12,22 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { ApiProblemResponse } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { UserRole } from '../users/user.entity';
 import { PaymentResponseDto } from './dto/payment.dto';
 import { PaymentsService } from './payments.service';
 import { SettlementReleaseService } from './settlement-release.service';
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ManagePayments)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/payments')
 export class AdminPaymentsController {
   constructor(

@@ -15,13 +15,13 @@ import {
   ApiProperty,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import {
   ApiProblemResponse,
   ApiValidationProblemResponse,
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { UserRole } from '../users/user.entity';
 import { WalletResponseDto } from '../wallets/dto/wallet.dto';
 import { WalletStatus } from '../wallets/wallet.entity';
 import { WalletWithBalances } from '../wallets/wallets.service';
@@ -47,9 +47,12 @@ class AdminWalletDto extends WalletResponseDto {
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ReadWallets)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @ApiProblemResponse(404, 'WALLET_NOT_FOUND')
 @Controller('admin/wallets')
 export class AdminWalletsController {
@@ -69,6 +72,7 @@ export class AdminWalletsController {
     );
   }
 
+  @RequirePermission(PlatformPermission.ManageWallets)
   @Post(':walletId/freeze')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -92,6 +96,7 @@ export class AdminWalletsController {
     );
   }
 
+  @RequirePermission(PlatformPermission.ManageWallets)
   @Post(':walletId/unfreeze')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Unfreeze a wallet' })

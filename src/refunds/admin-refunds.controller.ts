@@ -18,7 +18,8 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { toMinorUnits } from '../common/money/money';
 import {
   ApiProblemResponse,
@@ -27,15 +28,17 @@ import {
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
 import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
-import { UserRole } from '../users/user.entity';
 import { CreateRefundRequestDto, RefundResponseDto } from './dto/refund.dto';
 import { RefundsService } from './refunds.service';
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ManageRefunds)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin')
 export class AdminRefundsController {
   constructor(private readonly refunds: RefundsService) {}

@@ -21,7 +21,8 @@ import {
 import { AllowApiKey } from '../api-keys/api-key-principal';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { toMinorUnits } from '../common/money/money';
 import { organizationOwner } from '../common/owner/owner';
 import {
@@ -33,7 +34,6 @@ import { RequireOrgPermission } from '../organizations/guards/organization-acces
 import { OrganizationAccessGuard } from '../organizations/guards/organization-access.guard';
 import { OrgPermission } from '../organizations/organization-permissions';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { UserRole } from '../users/user.entity';
 import {
   LimitRuleResponseDto,
   LimitUsageResponseDto,
@@ -91,9 +91,12 @@ export class OrganizationLimitsController {
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ManageLimits)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/limit-rules')
 export class AdminLimitsController {
   constructor(

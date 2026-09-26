@@ -519,6 +519,17 @@ Platform admins (`role = admin`) can find accounts, see their money, and act. Ev
 
 Other admin endpoints live with their features: refunds, payment releases, payouts, reconciliation, webhook events, FX rates and audit logs. See [ADR 0023](./docs/adr/0023-admin-tooling.md).
 
+**Staff roles.** Each admin endpoint requires a platform permission, and staff get roles that bundle them:
+
+| Role | Can |
+| --- | --- |
+| `support` | Read-only: overview, users, organizations, wallets, payouts, audit log |
+| `risk` | + suspend users and organizations, freeze wallets, set limits, manage payouts |
+| `finance` | + refunds, early releases, reconciliation, fees, FX rates, provider webhooks, payouts |
+| `admin` | Everything, including assigning roles |
+
+Assign roles with `POST /v1/admin/users/:id/role` and `{ "role": "support", "reason": "…" }`. The change is audited and takes effect immediately. Nobody can change their own role, only admins can act on staff, and the last admin can't be removed, even by two admins acting at once. `GET /v1/admin/roles` lists each role's permissions. See [ADR 0028](./docs/adr/0028-platform-roles.md).
+
 ## Observability
 
 - **Logs.** Set `LOG_FORMAT=json` (the production default) for one JSON object per line, with `requestId`, `traceId` and `actor` on everything logged during a request, plus an access-log line per request (route, status, duration). `LOG_LEVEL` is `debug`, `info`, `warn` or `error`.

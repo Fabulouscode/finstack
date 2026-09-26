@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import type { Cursor } from '../common/pagination/cursor';
 import { isUniqueViolation } from '../database/postgres-errors';
-import { User, UserStatus } from './user.entity';
+import { User, UserRole, UserStatus } from './user.entity';
 import { EmailAlreadyRegisteredException } from './users.errors';
 
 export interface CreateUserInput {
@@ -98,6 +98,21 @@ export class UsersService {
     manager?: EntityManager,
   ): Promise<void> {
     await (manager ?? this.users.manager).update(User, { id }, { status });
+  }
+
+  async setRole(
+    id: string,
+    role: UserRole,
+    manager?: EntityManager,
+  ): Promise<void> {
+    await (manager ?? this.users.manager).update(User, { id }, { role });
+  }
+
+  countActiveAdmins(manager?: EntityManager): Promise<number> {
+    return (manager ?? this.users.manager).countBy(User, {
+      role: UserRole.Admin,
+      status: UserStatus.Active,
+    });
   }
 
   async countByStatus(): Promise<Record<string, number>> {

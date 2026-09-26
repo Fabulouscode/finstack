@@ -15,7 +15,8 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { RequestValidationException } from '../common/http/app.exception';
 import { toMinorUnits } from '../common/money/money';
 import {
@@ -23,7 +24,6 @@ import {
   ApiValidationProblemResponse,
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { UserRole } from '../users/user.entity';
 import { AdminRateProvider } from './admin-rate.provider';
 import {
   CreateFxQuoteRequestDto,
@@ -56,8 +56,8 @@ export class FxController {
     );
   }
 
+  @RequirePermission(PlatformPermission.ManageFxRates)
   @Post('rates')
-  @Roles(UserRole.Admin)
   @ApiOperation({
     summary: 'Set an exchange rate (admin)',
     description:
@@ -65,7 +65,10 @@ export class FxController {
   })
   @ApiCreatedResponse({ type: FxRateResponseDto })
   @ApiValidationProblemResponse()
-  @ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+  @ApiProblemResponse(
+    403,
+    'FORBIDDEN: your platform role lacks the required permission',
+  )
   @ApiProblemResponse(422, 'SAME_CURRENCY: base and quote must differ')
   async setRate(
     @CurrentUser() user: AuthenticatedUser,

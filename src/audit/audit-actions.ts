@@ -2,6 +2,7 @@
 export const AuditAction = {
   UserSuspended: 'user.suspended',
   UserReactivated: 'user.reactivated',
+  UserRoleChanged: 'user.role_changed',
   OrganizationCreated: 'organization.created',
   OrganizationSuspended: 'organization.suspended',
   OrganizationReactivated: 'organization.reactivated',

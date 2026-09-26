@@ -3,6 +3,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { AuditAction, AuditActionName } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
+import { InsufficientRoleException } from '../auth/auth.errors';
+import {
+  PlatformPermission,
+  roleHasPlatformPermission,
+} from '../auth/platform-permissions';
 import { RefreshTokenService } from '../auth/tokens/refresh-token.service';
 import { LedgerService } from '../ledger/ledger.service';
 import {
@@ -14,14 +19,16 @@ import { OutboundWebhooksService } from '../outbound-webhooks/outbound-webhooks.
 import { PayoutsService } from '../payouts/payouts.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { RefundsService } from '../refunds/refunds.service';
-import { User, UserStatus } from '../users/user.entity';
+import { User, UserRole, UserStatus } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { WalletStatus } from '../wallets/wallet.entity';
 import { WalletsService, WalletWithBalances } from '../wallets/wallets.service';
 import { WebhookEventStatus } from '../webhooks/webhook-event.entity';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import {
+  CannotChangeOwnRoleException,
   CannotSuspendSelfException,
+  LastAdminException,
   InvalidStatusChangeException,
   UserNotFoundException,
 } from './admin.errors';
@@ -80,18 +87,30 @@ export class AdminService {
    * checks the account) and all sessions are revoked.
    */
   async setUserStatus(
-    adminId: string,
+    actor: { id: string; role: UserRole },
     userId: string,
     status: UserStatus,
     reason: string,
   ): Promise<User> {
-    if (status === UserStatus.Suspended && userId === adminId) {
+    if (status === UserStatus.Suspended && userId === actor.id) {
       throw new CannotSuspendSelfException();
     }
     const user = await this.getUser(userId);
     if (user.status === status) {
       throw new InvalidStatusChangeException(`The user is already ${status}`);
     }
+    // Acting on staff needs the right to manage staff: a risk analyst can
+    // suspend customers, not the admins above them.
+    if (
+      user.role !== UserRole.User &&
+      !roleHasPlatformPermission(actor.role, PlatformPermission.ManageRoles)
+    ) {
+      throw new InsufficientRoleException(PlatformPermission.ManageRoles);
+    }
+    const removesAnAdmin =
+      status === UserStatus.Suspended &&
+      user.role === UserRole.Admin &&
+      user.status === UserStatus.Active;
     await this.changeWithAudit(
       status === UserStatus.Suspended
         ? AuditAction.UserSuspended
@@ -100,11 +119,48 @@ export class AdminService {
       userId,
       null,
       reason,
-      (manager) => this.users.setStatus(userId, status, manager),
+      async (manager) => {
+        if (removesAnAdmin) {
+          await this.assertNotLastAdmin(manager);
+        }
+        await this.users.setStatus(userId, status, manager);
+      },
     );
     if (status === UserStatus.Suspended) {
       await this.refreshTokens.revokeAllForUser(userId);
     }
+    return this.getUser(userId);
+  }
+
+  /**
+   * Changes a user's platform role. Nobody changes their own role, and the
+   * last active admin can't be removed (the platform would be locked out).
+   */
+  async setUserRole(
+    adminId: string,
+    userId: string,
+    role: UserRole,
+    reason: string,
+  ): Promise<User> {
+    if (userId === adminId) {
+      throw new CannotChangeOwnRoleException();
+    }
+    const user = await this.getUser(userId);
+    if (user.role === role) {
+      throw new InvalidStatusChangeException(`The user is already ${role}`);
+    }
+    await this.dataSource.transaction(async (manager) => {
+      if (user.role === UserRole.Admin && user.status === UserStatus.Active) {
+        await this.assertNotLastAdmin(manager);
+      }
+      await this.users.setRole(userId, role, manager);
+      await this.audit.record(manager, {
+        action: AuditAction.UserRoleChanged,
+        targetType: 'user',
+        targetId: userId,
+        metadata: { from: user.role, to: role, reason },
+      });
+    });
     return this.getUser(userId);
   }
 
@@ -197,6 +253,20 @@ export class AdminService {
         disabledWebhookEndpoints: outbound.disabledEndpoints,
       },
     };
+  }
+
+  /**
+   * Serialises every removal of an active admin (demotion or suspension),
+   * so two admins acting on each other at once can't both succeed and
+   * leave the platform without one.
+   */
+  private async assertNotLastAdmin(manager: EntityManager): Promise<void> {
+    await manager.query(
+      "SELECT pg_advisory_xact_lock(hashtext('platform-admins'))",
+    );
+    if ((await this.users.countActiveAdmins(manager)) <= 1) {
+      throw new LastAdminException();
+    }
   }
 
   private async changeWithAudit(

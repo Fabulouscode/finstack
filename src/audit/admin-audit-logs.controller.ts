@@ -5,14 +5,14 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor';
 import {
   ApiProblemResponse,
   ApiValidationProblemResponse,
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { UserRole } from '../users/user.entity';
 import { AuditService } from './audit.service';
 import {
   AdminListAuditLogsQueryDto,
@@ -22,9 +22,12 @@ import {
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ReadAuditLogs)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/audit-logs')
 export class AdminAuditLogsController {
   constructor(private readonly audit: AuditService) {}

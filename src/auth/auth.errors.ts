@@ -40,10 +40,12 @@ export class AuthenticationRequiredException extends AppException {
 }
 
 export class InsufficientRoleException extends AppException {
-  constructor() {
+  constructor(permission?: string) {
     super(
       'FORBIDDEN',
-      'You do not have permission to perform this action',
+      permission
+        ? `This requires the "${permission}" platform permission`
+        : 'You do not have permission to perform this action',
       HttpStatus.FORBIDDEN,
     );
   }

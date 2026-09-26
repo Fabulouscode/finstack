@@ -18,7 +18,8 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor';
 import {
   ApiProblemResponse,
@@ -28,12 +29,16 @@ import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { OrganizationResponseDto } from '../organizations/dto/organization.dto';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { UserResponseDto } from '../users/dto/user-response.dto';
-import { UserRole, UserStatus } from '../users/user.entity';
+import { UserStatus } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { WalletResponseDto } from '../wallets/dto/wallet.dto';
 import { WalletsService } from '../wallets/wallets.service';
 import { AdminService } from './admin.service';
-import { AdminReasonRequestDto, SearchUsersQueryDto } from './dto/admin.dto';
+import {
+  AdminReasonRequestDto,
+  SearchUsersQueryDto,
+  SetRoleRequestDto,
+} from './dto/admin.dto';
 
 class AdminUsersPageDto {
   @ApiProperty({ type: [UserResponseDto] })
@@ -56,9 +61,12 @@ class AdminUserDetailDto {
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ReadUsers)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/users')
 export class AdminUsersController {
   constructor(
@@ -109,6 +117,7 @@ export class AdminUsersController {
     };
   }
 
+  @RequirePermission(PlatformPermission.ManageUsers)
   @Post(':userId/suspend')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -128,7 +137,7 @@ export class AdminUsersController {
   ): Promise<UserResponseDto> {
     return UserResponseDto.fromEntity(
       await this.admin.setUserStatus(
-        admin.id,
+        admin,
         userId,
         UserStatus.Suspended,
         body.reason,
@@ -136,6 +145,31 @@ export class AdminUsersController {
     );
   }
 
+  @RequirePermission(PlatformPermission.ManageRoles)
+  @Post(':userId/role')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Change a user's platform role",
+    description:
+      'Staff roles: support (read-only), risk (suspensions, freezes, limits), finance (refunds, fees, FX, reconciliation), admin (everything). ' +
+      'Takes effect immediately. You cannot change your own role, and the last admin cannot be removed. Audited with the reason.',
+  })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiValidationProblemResponse()
+  @ApiProblemResponse(404, 'USER_NOT_FOUND')
+  @ApiProblemResponse(409, 'LAST_ADMIN | INVALID_STATUS_CHANGE')
+  @ApiProblemResponse(422, 'CANNOT_CHANGE_OWN_ROLE')
+  async setRole(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() body: SetRoleRequestDto,
+  ): Promise<UserResponseDto> {
+    return UserResponseDto.fromEntity(
+      await this.admin.setUserRole(admin.id, userId, body.role, body.reason),
+    );
+  }
+
+  @RequirePermission(PlatformPermission.ManageUsers)
   @Post(':userId/reactivate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reactivate a suspended user' })
@@ -150,7 +184,7 @@ export class AdminUsersController {
   ): Promise<UserResponseDto> {
     return UserResponseDto.fromEntity(
       await this.admin.setUserStatus(
-        admin.id,
+        admin,
         userId,
         UserStatus.Active,
         body.reason,

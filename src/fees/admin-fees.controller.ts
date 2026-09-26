@@ -18,7 +18,8 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { AppException } from '../common/http/app.exception';
 import { toMinorUnits } from '../common/money/money';
 import {
@@ -27,7 +28,6 @@ import {
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { UserRole } from '../users/user.entity';
 import {
   FeeRuleResponseDto,
   ListFeeRulesQueryDto,
@@ -37,9 +37,12 @@ import { FeesService } from './fees.service';
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ManageFees)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/fee-rules')
 export class AdminFeesController {
   constructor(

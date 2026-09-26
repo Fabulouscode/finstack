@@ -38,5 +38,5 @@ Until now these were service methods with no API, or required SQL. Direct SQL by
 ## Consequences
 
 - One extra indexed query per authenticated request. If that ever matters, a short-lived cache (seconds) keeps most of the benefit.
-- Finer-grained admin roles (support vs. risk vs. finance) aren't modelled yet: `admin` can do everything. Splitting it is the natural next step when teams grow.
+- ~~Finer-grained admin roles aren't modelled yet.~~ **Done in ADR 0028:** support, risk and finance roles, each with specific platform permissions.
 - Admin actions change state only. Correcting money (manual ledger adjustments) remains a deliberate, separate capability.

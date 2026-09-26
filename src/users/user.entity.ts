@@ -11,6 +11,10 @@ import {
 /** Platform-wide role. Organization-level roles live with organizations. */
 export enum UserRole {
   User = 'user',
+  /** Platform staff (see PLATFORM_ROLE_PERMISSIONS). */
+  Support = 'support',
+  Risk = 'risk',
+  Finance = 'finance',
   Admin = 'admin',
 }
 

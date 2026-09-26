@@ -22,3 +22,23 @@ export class InvalidStatusChangeException extends AppException {
     super('INVALID_STATUS_CHANGE', detail, HttpStatus.CONFLICT);
   }
 }
+
+export class CannotChangeOwnRoleException extends AppException {
+  constructor() {
+    super(
+      'CANNOT_CHANGE_OWN_ROLE',
+      'Staff cannot change their own role',
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+}
+
+export class LastAdminException extends AppException {
+  constructor() {
+    super(
+      'LAST_ADMIN',
+      'The last active admin cannot be removed',
+      HttpStatus.CONFLICT,
+    );
+  }
+}

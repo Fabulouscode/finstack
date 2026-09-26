@@ -13,18 +13,21 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { PlatformPermission } from '../auth/platform-permissions';
 import { ApiProblemResponse } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { UserRole } from '../users/user.entity';
 import { PayoutResponseDto } from './dto/payout.dto';
 import { PayoutsService } from './payouts.service';
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
-@Roles(UserRole.Admin)
+@RequirePermission(PlatformPermission.ReadPayouts)
 @ApiProblemResponse(401, 'UNAUTHENTICATED')
-@ApiProblemResponse(403, 'FORBIDDEN: admin role required')
+@ApiProblemResponse(
+  403,
+  'FORBIDDEN: your platform role lacks the required permission',
+)
 @Controller('admin/payouts')
 export class AdminPayoutsController {
   constructor(private readonly payouts: PayoutsService) {}
@@ -39,6 +42,7 @@ export class AdminPayoutsController {
     return PayoutResponseDto.from(await this.payouts.view(payoutId));
   }
 
+  @RequirePermission(PlatformPermission.ManagePayouts)
   @Post(':payoutId/sync')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

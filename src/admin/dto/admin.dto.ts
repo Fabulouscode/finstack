@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 import { toApiAmount } from '../../common/money/money';
 import { OrganizationStatus } from '../../organizations/organization.entity';
-import { UserStatus } from '../../users/user.entity';
+import { UserRole, UserStatus } from '../../users/user.entity';
 import { AdminOverview } from '../admin.service';
 
 const trim = ({ value }: { value: unknown }): unknown =>
@@ -29,6 +29,20 @@ export class AdminReasonRequestDto {
   @IsNotEmpty()
   @MaxLength(500)
   reason: string;
+}
+
+export class SetRoleRequestDto extends AdminReasonRequestDto {
+  @ApiProperty({ enum: UserRole, example: UserRole.Support })
+  @IsEnum(UserRole)
+  role: UserRole;
+}
+
+export class PlatformRoleDto {
+  @ApiProperty({ enum: UserRole })
+  role: UserRole;
+
+  @ApiProperty({ type: [String], example: ['overview:read', 'users:read'] })
+  permissions: string[];
 }
 
 class PageQueryDto {
