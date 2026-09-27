@@ -438,6 +438,7 @@ describe('PaystackProvider reconciliation', () => {
         message: 'ok',
         data: [
           tx('trx_3', 'abandoned', '2026-09-24T03:00:00Z'),
+          tx('trx_5', 'reversal-pending', '2026-09-24T04:00:00Z'),
           // Paystack's `to` is inclusive: this one belongs to the next day.
           tx('trx_4', 'success', '2026-09-25T00:00:00Z'),
         ],
@@ -451,6 +452,7 @@ describe('PaystackProvider reconciliation', () => {
       ['trx_1', 'successful'],
       ['trx_2', 'refunded'],
       ['trx_3', 'failed'],
+      ['trx_5', 'refunded'],
     ]);
     expect(calls).toHaveLength(2);
     expect(calls[1]?.url).toContain('page=2');

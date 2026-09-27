@@ -64,7 +64,9 @@ function mapListedStatus(status: string): ProviderRecordStatus {
   switch (status) {
     case 'success':
       return 'successful';
+    // reversal-pending: a refund is under way; the money was still collected.
     case 'reversed':
+    case 'reversal-pending':
       return 'refunded';
     case 'failed':
     case 'abandoned':
