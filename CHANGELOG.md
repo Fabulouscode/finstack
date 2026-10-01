@@ -4,6 +4,10 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
+Easier to develop with, and refunds that settle on their own. No migrations or breaking changes.
+
 ### Added
 - `finstack listen` (`npm run listen`): delivers test-mode Paystack, Stripe and Flutterwave events to a local FinStack as signed webhooks, by polling each provider's API. No tunnel, public URL or dashboard setup. Test keys only. See ADR 0031.
 - Refunds stuck in `processing` are re-checked every 5 minutes (`refunds-sync`), as payouts are, so they settle without a webhook or an admin retry. Each re-check follows the never-sent-twice rules.
@@ -71,6 +75,7 @@ The first release: a complete fintech backend foundation. Decisions are recorded
 - Sandbox deployments (`SANDBOX_MODE`) with an owner-checked simulation API and test bank accounts.
 - CI: format, lint, type-check, build, unit, integration and end-to-end tests, and a schema drift check.
 
+[0.3.0]: https://github.com/Fabulouscode/finstack/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Fabulouscode/finstack/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Fabulouscode/finstack/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Fabulouscode/finstack/releases/tag/v0.1.0

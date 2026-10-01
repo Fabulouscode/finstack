@@ -1,6 +1,6 @@
 {
   "name": "finstack",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Production-minded NestJS fintech backend starter for payments, wallets, double-entry ledgers, webhooks, idempotency, and reconciliation.",
   "author": "",
   "private": true,
