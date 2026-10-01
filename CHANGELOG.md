@@ -4,6 +4,9 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+- Refunds stuck in `processing` are re-checked every 5 minutes (`refunds-sync`), as payouts are, so they settle without a webhook or an admin retry. Each re-check follows the never-sent-twice rules.
+
 ## [0.2.0] - 2026-10-01
 
 A third payment provider, a way to deploy, and a refund fix that matters for anyone using Paystack or Flutterwave.

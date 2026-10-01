@@ -11,6 +11,7 @@ import {
 } from '../src/payment-providers/mock/mock-payment.provider';
 import { PaymentResponseDto } from '../src/payments/dto/payment.dto';
 import { RefundResponseDto } from '../src/refunds/dto/refund.dto';
+import { RefundsService } from '../src/refunds/refunds.service';
 import { WalletResponseDto } from '../src/wallets/dto/wallet.dto';
 import { WalletsService } from '../src/wallets/wallets.service';
 import { registerUser } from './utils/auth';
@@ -423,6 +424,57 @@ describe('Refunds (e2e)', () => {
     await expect(wallet()).resolves.toMatchObject({
       available: 0,
       reserved: 5_000,
+    });
+  });
+
+  describe('scheduled re-checks', () => {
+    const TEN_MINUTES = 10 * 60 * 1000;
+    const sync = (): Promise<number> =>
+      app.get(RefundsService).syncStale(TEN_MINUTES);
+    const statusOf = async (id: string): Promise<string> =>
+      (
+        (await as(adminToken, 'get', `/v1/admin/refunds/${id}`).expect(200))
+          .body as RefundResponseDto
+      ).status;
+
+    it('settles a refund whose response was lost, once it is stale, without sending twice', async () => {
+      const payment = await paidPayment(5_000, 'USD');
+      mock.setRefundBehaviour('lost');
+      const created = (await refund(payment.id, {}).expect(201))
+        .body as RefundResponseDto;
+      mock.setRefundBehaviour('successful');
+
+      // Just sent: left alone.
+      await expect(sync()).resolves.toBe(0);
+      await expect(statusOf(created.id)).resolves.toBe('processing');
+
+      await sentMinutesAgo(created.id, 15);
+      await expect(sync()).resolves.toBe(1);
+
+      await expect(statusOf(created.id)).resolves.toBe('successful');
+      expect(mock.refundsMadeFor(created.reference)).toBe(1);
+      await expect(wallet()).resolves.toMatchObject({
+        available: 0,
+        reserved: 0,
+      });
+    });
+
+    it('settles a pending refund the provider finished without a webhook', async () => {
+      const payment = await paidPayment(5_000, 'USD');
+      mock.setRefundBehaviour('pending');
+      const created = (await refund(payment.id, {}).expect(201))
+        .body as RefundResponseDto;
+      // The provider finishes it, but its webhook never arrives.
+      mock.simulateRefundOutcome(
+        created.providerRefundReference ?? '',
+        'successful',
+      );
+
+      await sentMinutesAgo(created.id, 15);
+      await sync();
+
+      await expect(statusOf(created.id)).resolves.toBe('successful');
+      expect(mock.refundsMadeFor(created.reference)).toBe(1);
     });
   });
 

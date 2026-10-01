@@ -18,7 +18,7 @@ A refund sends money back to the customer's card or account through the provider
    - `successful` → complete.
    - `pending` → wait for the webhook.
    - Rejection → fail (hold released).
-   - Outage → stays `processing` with the hold kept, and an admin can retry (`POST /v1/admin/refunds/:id/retry`).
+   - Outage → stays `processing` with the hold kept. It is re-checked automatically (see the amendment), and an admin can retry at once (`POST /v1/admin/refunds/:id/retry`).
 3. **Complete, in one DB transaction.** The held funds leave (reserved → external clearing), and the refund becomes `successful`. When the payment is fully refunded, its transaction becomes `reversed`. `refund.successful` goes to the outbox.
 4. **Fail, in one DB transaction.** The hold is released (reserved → available), the refund becomes `failed`, and `refund.failed` goes to the outbox.
 
@@ -30,7 +30,7 @@ A refund sends money back to the customer's card or account through the provider
 
 - No double refunds (idempotency key plus row lock), no refunds beyond the payment, and no refunds of money the user already spent.
 - A pending refund keeps the funds reserved, so the user sees them as unavailable until the provider settles.
-- Refunds stuck `processing` (outage, lost webhook) need a retry. An automatic retry and reconciliation job belongs to the reconciliation module.
+- Refunds stuck `processing` (outage, lost webhook) are re-checked automatically (see the amendment).
 - A product that wants to keep its FX margin on refunds changes one function (`reverseConversion`).
 
 ## Amendment (2026-10-01): never sent twice
@@ -45,4 +45,4 @@ Refunds now follow the payout rule (ADR 0018):
 - **One sender at a time.** A conditional update of `submitted_at` lets only one of request, retry and webhook send. A refund sent within the last 5 minutes is never resent, because the first request may still be in flight.
 - **Only a rejected send fails a refund.** Errors from status checks and lookups leave it `processing`: the money may already have reached the customer, so releasing the hold could pay out twice. Before, a 4xx from a status check failed the refund.
 - The mock provider no longer deduplicates, and has `lost` (made, response lost) and `unsure` (lookups can't tell) modes. Tests cover each case and a race of concurrent retries.
-
+- **Re-checked automatically.** Every 5 minutes, the maintenance scheduler re-checks refunds last sent more than 10 minutes ago (`refunds-sync`), through the same rules. A refund the provider finished without a usable webhook (Flutterwave's refund webhooks carry none of our references) settles on its own, and one it never received is sent once. Before, stuck refunds waited for an admin.

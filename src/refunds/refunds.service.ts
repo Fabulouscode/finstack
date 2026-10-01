@@ -158,6 +158,40 @@ export class RefundsService {
   }
 
   /**
+   * Re-checks refunds stuck in processing (lost or missing webhooks,
+   * timeouts, provider outages), oldest first. Run by the maintenance
+   * scheduler. Each goes through submit, so a refund is never sent twice,
+   * and one refund's error doesn't stop the others.
+   */
+  async syncStale(olderThanMs: number, limit = 50): Promise<number> {
+    const before = new Date(Date.now() - olderThanMs);
+    const stale = await this.refunds
+      .createQueryBuilder('refund')
+      .where(
+        this.transactions.statusIn('refund.transaction_id', [
+          TransactionStatus.Processing,
+        ]),
+      )
+      .andWhere('COALESCE(refund.submittedAt, refund.createdAt) < :before', {
+        before,
+      })
+      .orderBy('refund.createdAt', 'ASC')
+      .limit(limit)
+      .getMany();
+
+    for (const refund of stale) {
+      try {
+        await this.submit(refund);
+      } catch (error) {
+        this.logger.error(
+          `Re-checking refund ${refund.reference} failed: ${String(error)}`,
+        );
+      }
+    }
+    return stale.length;
+  }
+
+  /**
    * Handles a refund webhook. The payload is never trusted: every matching
    * processing refund is re-checked with the provider. `already_final` means
    * the refunds exist but were settled earlier (e.g. synchronously).

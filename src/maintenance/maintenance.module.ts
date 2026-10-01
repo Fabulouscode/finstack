@@ -5,6 +5,7 @@ import { OutboxModule } from '../outbox/outbox.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PayoutsModule } from '../payouts/payouts.module';
 import { ReconciliationModule } from '../reconciliation/reconciliation.module';
+import { RefundsModule } from '../refunds/refunds.module';
 import { QueuesModule } from '../queues/queues.module';
 import { MaintenanceProcessor } from './maintenance.processor';
 import { MaintenanceService } from './maintenance.service';
@@ -18,6 +19,7 @@ import { MaintenanceService } from './maintenance.service';
     PayoutsModule,
     QueuesModule,
     ReconciliationModule,
+    RefundsModule,
   ],
   providers: [MaintenanceService, MaintenanceProcessor],
   exports: [MaintenanceService],

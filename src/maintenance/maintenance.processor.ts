@@ -7,22 +7,30 @@ import { SettlementReleaseService } from '../payments/settlement-release.service
 import { RECONCILIATION_JOB } from '../reconciliation/reconciliation-jobs';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { PayoutsService } from '../payouts/payouts.service';
+import { RefundsService } from '../refunds/refunds.service';
 import { ManagedWorker } from '../queues/managed-worker';
 import { QueueName } from '../queues/queue-names';
 import { CleanupResult, MaintenanceService } from './maintenance.service';
 
 const CLEANUP_EVERY_MS = 60 * 60 * 1000;
 const PAYOUT_SYNC_EVERY_MS = 5 * 60 * 1000;
+const REFUND_SYNC_EVERY_MS = 5 * 60 * 1000;
 const SETTLEMENT_RELEASE_EVERY_MS = 60 * 1000;
 /** Daily, for the previous UTC day, once providers have closed it. */
 const RECONCILIATION_CRON = '0 2 * * *';
 /** Payouts processing longer than this are re-checked with the provider. */
 const PAYOUT_STALE_AFTER_MS = 10 * 60 * 1000;
+/**
+ * Refunds last sent longer ago than this are re-checked. Beyond the
+ * refunds' 5-minute in-flight window, so a refund the provider never got
+ * can be sent again.
+ */
+const REFUND_STALE_AFTER_MS = 10 * 60 * 1000;
 
 /**
  * Periodic and background housekeeping: hourly cleanup, ending settlement
- * holds every minute, re-checking payouts stuck in processing (lost
- * webhooks, provider outages) every few minutes, and reconciliation (daily,
+ * holds every minute, re-checking payouts and refunds stuck in processing
+ * (lost webhooks, provider outages) every few minutes, and reconciliation (daily,
  * or on request). A BullMQ job scheduler (not setInterval) makes it run
  * once per interval across all instances.
  */
@@ -33,6 +41,7 @@ export class MaintenanceProcessor extends ManagedWorker {
   constructor(
     private readonly maintenance: MaintenanceService,
     private readonly payouts: PayoutsService,
+    private readonly refunds: RefundsService,
     private readonly settlement: SettlementReleaseService,
     private readonly reconciliation: ReconciliationService,
     @InjectQueue(QueueName.Maintenance) private readonly queue: Queue,
@@ -54,6 +63,11 @@ export class MaintenanceProcessor extends ManagedWorker {
         'payouts-sync',
         { every: PAYOUT_SYNC_EVERY_MS },
         { name: 'payouts-sync' },
+      );
+      void this.queue.upsertJobScheduler(
+        'refunds-sync',
+        { every: REFUND_SYNC_EVERY_MS },
+        { name: 'refunds-sync' },
       );
       void this.queue.upsertJobScheduler(
         'settlement-release',
@@ -82,6 +96,9 @@ export class MaintenanceProcessor extends ManagedWorker {
     }
     if (job.name === 'settlement-release') {
       return { released: await this.settlement.releaseDue() };
+    }
+    if (job.name === 'refunds-sync') {
+      return { synced: await this.refunds.syncStale(REFUND_STALE_AFTER_MS) };
     }
     if (job.name === 'payouts-sync') {
       return { synced: await this.payouts.syncStale(PAYOUT_STALE_AFTER_MS) };
