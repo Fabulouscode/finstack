@@ -14,7 +14,7 @@ A refund sends money back to the customer's card or account through the provider
 **Lifecycle** (status on a `refund` transaction):
 
 1. **Request, in one DB transaction.** Lock the payment row, compute the remaining refundable amount (payment minus non-failed refunds), create the refund, and **hold** the wallet amount (available → reserved). If the wallet no longer has the money, the request fails with `INSUFFICIENT_FUNDS` before any provider call. The payment lock serialises concurrent refunds, so they can't over-commit.
-2. **Submit, outside any DB transaction.** Call the provider, idempotent by the refund reference (`rfd_…`).
+2. **Submit, outside any DB transaction.** Call the provider with the refund reference (`rfd_…`). Never sent twice: see the amendment below.
    - `successful` → complete.
    - `pending` → wait for the webhook.
    - Rejection → fail (hold released).
@@ -32,3 +32,17 @@ A refund sends money back to the customer's card or account through the provider
 - A pending refund keeps the funds reserved, so the user sees them as unavailable until the provider settles.
 - Refunds stuck `processing` (outage, lost webhook) need a retry. An automatic retry and reconciliation job belongs to the reconciliation module.
 - A product that wants to keep its FX margin on refunds changes one function (`reverseConversion`).
+
+## Amendment (2026-10-02): never sent twice
+
+The original decision assumed providers deduplicate refunds by our reference. Only Stripe does (through its `Idempotency-Key`, and only for 24 hours). Paystack and Flutterwave make a new refund on every call. If a refund request timed out after the provider had acted, a retry (admin retry or webhook) refunded the customer twice. The mock provider also deduplicated, so no test caught it.
+
+Refunds now follow the payout rule (ADR 0018):
+
+- **`submitted_at`** records when a refund was last sent. Existing refunds were backfilled with their creation time, since every one of them was sent then.
+- **Ask before resending.** Once sent, a refund is only sent again after the provider's `findRefund` confirms it has no refund with our reference. Every adapter implements it: Stripe matches the `finstack_reference` metadata; Paystack (`merchant_note`) and Flutterwave (`comment`) list the payment's refunds and match our reference.
+- **Never guess.** When a provider's list has a refund without a note, it could be ours with the note dropped, so `findRefund` reports "can't tell" and nothing is resent. The refund stays `processing` with the hold kept, visible in the admin overview, for a person to resolve.
+- **One sender at a time.** A conditional update of `submitted_at` lets only one of request, retry and webhook send. A refund sent within the last 5 minutes is never resent, because the first request may still be in flight.
+- **Only a rejected send fails a refund.** Errors from status checks and lookups leave it `processing`: the money may already have reached the customer, so releasing the hold could pay out twice. Before, a 4xx from a status check failed the refund.
+- The mock provider no longer deduplicates, and has `lost` (made, response lost) and `unsure` (lookups can't tell) modes. Tests cover each case and a race of concurrent retries.
+

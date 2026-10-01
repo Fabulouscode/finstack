@@ -11,6 +11,7 @@ import type { PaymentsConfig } from '../../config/payments.config';
 import { JsonHttpClient } from '../http/json-http-client';
 import {
   CreatePayoutRecipientInput,
+  FindRefundInput,
   InitializePaymentInput,
   InitializePaymentResult,
   InitiatePayoutInput,
@@ -31,6 +32,7 @@ import {
   VerifyPaymentInput,
   VerifyPaymentResult,
 } from '../payment-provider';
+import { pickOurRefund } from '../refund-lookup';
 
 export const FLUTTERWAVE_SIGNATURE_HEADER = 'verif-hash';
 
@@ -68,6 +70,15 @@ interface FlutterwaveBeneficiary {
   bank_code: string;
   full_name: string;
   bank_name?: string | null;
+}
+
+interface FlutterwaveListedRefund {
+  id: number;
+  status: string;
+  comment?: string | null;
+  comments?: string | null;
+  transaction_id?: number | string;
+  tx_id?: number | string;
 }
 
 interface FlutterwaveRefund {
@@ -326,6 +337,52 @@ export class FlutterwaveProvider implements PaymentProvider {
       providerRefundReference: String(body.data.id),
       status: mapRefundStatus(body.data.status),
     };
+  }
+
+  /**
+   * Our refund among the payment's refunds (our reference is sent as the
+   * refund comment). Listed by Flutterwave's transaction id; see
+   * pickOurRefund for how an unclear answer is handled.
+   */
+  async findRefund(
+    input: FindRefundInput,
+  ): Promise<RefundPaymentResult | null> {
+    const transaction = await this.transactionByReference(
+      input.providerReference,
+    );
+    const created = new Date(transaction.created_at ?? Date.now());
+    const query = new URLSearchParams({
+      id: String(transaction.id),
+      from: day(new Date(created.getTime() - DAY_MS)),
+      to: day(new Date(Date.now() + DAY_MS)),
+    });
+    const { body } = await this.call<FlutterwaveListedRefund[]>(
+      'GET',
+      `/refunds?${query.toString()}`,
+    );
+    if ((body.meta?.page_info?.total_pages ?? 1) > 1) {
+      throw new PaymentProviderError(
+        'Flutterwave: too many refunds on this payment to check',
+        true,
+      );
+    }
+    // Never trust the filter: keep only this transaction's refunds.
+    const refunds = body.data.filter((refund) => {
+      const id = refund.transaction_id ?? refund.tx_id;
+      return id === undefined || Number(id) === transaction.id;
+    });
+    const ours = pickOurRefund(
+      refunds,
+      input.reference,
+      (refund) => refund.comment ?? refund.comments,
+      'Flutterwave',
+    );
+    return ours
+      ? {
+          providerRefundReference: String(ours.id),
+          status: mapRefundStatus(ours.status),
+        }
+      : null;
   }
 
   async getRefund(

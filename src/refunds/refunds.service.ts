@@ -16,7 +16,7 @@ import { SystemAccounts } from '../ledger/system-accounts';
 import { OutboxService } from '../outbox/outbox.service';
 import {
   PaymentProviderError,
-  ProviderPaymentStatus,
+  RefundPaymentResult,
 } from '../payment-providers/payment-provider';
 import { FxService } from '../fx/fx.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -40,6 +40,13 @@ import {
 
 const { Debit, Credit } = EntryDirection;
 
+/**
+ * A refund sent less than this long ago is never sent again, even if the
+ * provider has no record of it yet: the first request may still be in
+ * flight. Far longer than any provider timeout.
+ */
+const RESUBMIT_AFTER_MS = 5 * 60 * 1000;
+
 export interface RefundView {
   refund: Refund;
   transaction: Transaction;
@@ -52,9 +59,9 @@ export interface RefundView {
  *    refundable amount, create the refund and HOLD the wallet amount
  *    (available -> reserved). Insufficient funds fail here, before any
  *    provider call.
- * 2. submit: call the provider outside any DB transaction, idempotent by the
- *    refund reference. Success completes; rejection releases the hold; an
- *    outage leaves it processing for a safe retry.
+ * 2. submit: call the provider outside any DB transaction. Never sent twice
+ *    (see submit). Success completes; rejection releases the hold; an
+ *    unknown outcome leaves it processing for a safe retry.
  * 3. complete / fail: in one DB transaction, move the held funds out
  *    (reversing the original FX conversion proportionally) or release them.
  */
@@ -152,11 +159,8 @@ export class RefundsService {
 
   /**
    * Handles a refund webhook. The payload is never trusted: every matching
-   * processing refund is re-checked with the provider.
-   */
-  /**
-   * Re-checks the in-flight refunds a webhook points at. `already_final`
-   * means the refunds exist but were settled earlier (e.g. synchronously).
+   * processing refund is re-checked with the provider. `already_final` means
+   * the refunds exist but were settled earlier (e.g. synchronously).
    */
   async syncFromWebhook(
     provider: string,
@@ -344,48 +348,96 @@ export class RefundsService {
 
   // ---- Step 2 -----------------------------------------------------------------
 
+  /**
+   * Sends the refund, or finds out what happened to it. Never sends twice:
+   * once a refund has been sent, it is only sent again after the provider
+   * confirms it has no refund with our reference (findRefund), and only one
+   * caller (request, retry, webhook) can send at a time (claimSubmission).
+   *
+   * Only a rejection of a send fails the refund and releases the hold. When
+   * a status check or lookup fails, the money may already have reached the
+   * customer, so the refund stays processing until someone can tell.
+   */
   private async submit(refund: Refund): Promise<void> {
     const payment = await this.payments.getById(refund.paymentId);
     const provider = this.providers.get(refund.provider);
 
-    let status: ProviderPaymentStatus;
+    let result: RefundPaymentResult | null;
     try {
-      if (refund.providerRefundReference) {
-        status = (await provider.getRefund(refund.providerRefundReference))
-          .status;
-      } else {
-        const result = await provider.refundPayment({
+      result = refund.providerRefundReference
+        ? await provider.getRefund(refund.providerRefundReference)
+        : refund.submittedAt
+          ? await provider.findRefund({
+              providerReference: payment.providerReference ?? '',
+              reference: refund.reference,
+            })
+          : null;
+    } catch (error) {
+      this.leaveProcessing(refund, error);
+      return;
+    }
+
+    if (!result) {
+      if (!(await this.claimSubmission(refund.id))) {
+        return; // sent moments ago, possibly still in flight; ask later
+      }
+      try {
+        result = await provider.refundPayment({
           providerReference: payment.providerReference ?? '',
           amount: refund.amount,
           currency: refund.currency,
           reference: refund.reference,
         });
-        await this.refunds.update(refund.id, {
-          providerRefundReference: result.providerRefundReference,
-        });
-        status = result.status;
+      } catch (error) {
+        if (error instanceof PaymentProviderError && !error.retryable) {
+          // A definite rejection, and no earlier send of ours exists.
+          await this.fail(refund.id, 'PROVIDER_REJECTED', error.message);
+        } else {
+          this.leaveProcessing(refund, error);
+        }
+        return;
       }
-    } catch (error) {
-      if (error instanceof PaymentProviderError && !error.retryable) {
-        await this.fail(refund.id, 'PROVIDER_REJECTED', error.message);
-      } else {
-        // Unknown outcome: keep the hold, stay processing, retry later.
-        this.logger.warn(
-          `Refund ${refund.reference} left processing: ${String(error)}`,
-        );
-      }
-      return;
     }
 
-    if (status === 'successful') {
+    if (result.providerRefundReference !== refund.providerRefundReference) {
+      await this.refunds.update(refund.id, {
+        providerRefundReference: result.providerRefundReference,
+      });
+    }
+    if (result.status === 'successful') {
       await this.complete(refund.id);
-    } else if (status === 'failed') {
+    } else if (result.status === 'failed') {
       await this.fail(
         refund.id,
         'REFUND_FAILED',
         'The provider reported the refund as failed',
       );
     }
+  }
+
+  /** Unknown outcome: keep the hold, stay processing, find out later. */
+  private leaveProcessing(refund: Refund, error: unknown): void {
+    this.logger.warn(
+      `Refund ${refund.reference} left processing: ${String(error)}`,
+    );
+  }
+
+  /**
+   * Marks the refund as sent, unless it was sent within RESUBMIT_AFTER_MS
+   * (another send may still be in flight). Only one caller wins.
+   */
+  private async claimSubmission(refundId: string): Promise<boolean> {
+    const result = await this.refunds
+      .createQueryBuilder()
+      .update(Refund)
+      .set({ submittedAt: () => 'now()' })
+      .where('id = :id', { id: refundId })
+      .andWhere(
+        '(submitted_at IS NULL OR submitted_at < now() - make_interval(secs => :seconds))',
+        { seconds: RESUBMIT_AFTER_MS / 1000 },
+      )
+      .execute();
+    return (result.affected ?? 0) > 0;
   }
 
   // ---- Step 3 -----------------------------------------------------------------

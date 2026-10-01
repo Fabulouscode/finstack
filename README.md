@@ -450,6 +450,7 @@ See [ADR 0027](./docs/adr/0027-risk-controls.md).
 - The total refunded can never exceed the payment, even under concurrent requests.
 - **Converted payments are refunded at the original rate, margin included**: the customer gets back exactly what they paid, in proportion for partial refunds, with exact totals across several partial refunds.
 - Provider refund webhooks are verified and re-checked with the provider before settling. A failed refund returns the held funds.
+- **A refund is never sent twice.** If sending times out, FinStack asks the provider whether it has the refund before ever sending it again, and keeps the hold until it knows.
 
 See [ADR 0014](./docs/adr/0014-refunds.md).
 

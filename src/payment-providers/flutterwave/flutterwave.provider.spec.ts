@@ -239,6 +239,64 @@ describe('FlutterwaveProvider', () => {
     });
   });
 
+  describe('findRefund', () => {
+    const find = (
+      provider: FlutterwaveProvider,
+    ): ReturnType<FlutterwaveProvider['findRefund']> =>
+      provider.findRefund({ providerReference: 'trx_1', reference: 'rfd_1' });
+
+    it("lists the transaction's refunds by Flutterwave's id and finds ours by comment", async () => {
+      const { provider, calls } = providerWith(
+        ok(transaction()),
+        ok([
+          {
+            id: 1,
+            status: 'completed',
+            comment: 'rfd_0',
+            transaction_id: 3091255,
+          },
+          {
+            id: 2,
+            status: 'completed-mpgs',
+            comment: 'rfd_1',
+            transaction_id: 3091255,
+          },
+        ]),
+      );
+
+      await expect(find(provider)).resolves.toEqual({
+        providerRefundReference: '2',
+        status: 'successful',
+      });
+      expect(calls[1]?.url).toMatch(
+        /^https:\/\/api\.flutterwave\.test\/v3\/refunds\?id=3091255&from=2026-09-30&to=\d{4}-\d{2}-\d{2}$/,
+      );
+    });
+
+    it('confirms there is none when the payment has no refunds', async () => {
+      const { provider } = providerWith(ok(transaction()), ok([]));
+      await expect(find(provider)).resolves.toBeNull();
+    });
+
+    it('cannot tell when a refund has no comment', async () => {
+      const { provider } = providerWith(
+        ok(transaction()),
+        ok([
+          { id: 2, status: 'completed', comment: '', transaction_id: 3091255 },
+        ]),
+      );
+      await expect(find(provider)).rejects.toMatchObject({ retryable: true });
+    });
+
+    it('cannot tell when Flutterwave answers with an error', async () => {
+      const { provider } = providerWith(ok(transaction()), [
+        400,
+        { status: 'error', message: 'Not Found', data: null },
+      ]);
+      await expect(find(provider)).rejects.toBeInstanceOf(PaymentProviderError);
+    });
+  });
+
   describe('webhooks', () => {
     const { provider } = providerWith();
     const verify = (hash: string | undefined): boolean =>

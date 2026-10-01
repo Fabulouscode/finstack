@@ -341,3 +341,65 @@ describe('StripeProvider reconciliation', () => {
     expect(calls[1]?.url).toContain('starting_after=cs_2');
   });
 });
+
+describe('StripeProvider.findRefund', () => {
+  const refunds = (data: object[], hasMore = false): object => ({
+    object: 'list',
+    data,
+    has_more: hasMore,
+  });
+  const find = (
+    provider: StripeProvider,
+  ): ReturnType<StripeProvider['findRefund']> =>
+    provider.findRefund({
+      providerReference: 'cs_test_123',
+      reference: 'rfd_1',
+    });
+
+  it("finds our refund by its finstack_reference metadata, on the session's payment", async () => {
+    const { provider, calls } = providerReturning(
+      session(),
+      refunds([
+        {
+          id: 're_other',
+          status: 'succeeded',
+          metadata: { finstack_reference: 'rfd_0' },
+        },
+        {
+          id: 're_ours',
+          status: 'pending',
+          metadata: { finstack_reference: 'rfd_1' },
+        },
+      ]),
+    );
+
+    await expect(find(provider)).resolves.toEqual({
+      providerRefundReference: 're_ours',
+      status: 'pending',
+    });
+    expect(calls[1]?.url).toBe(
+      'https://api.stripe.test/v1/refunds?payment_intent=pi_123&limit=100',
+    );
+  });
+
+  it('confirms there is none when no refund carries our reference', async () => {
+    const { provider } = providerReturning(
+      session(),
+      refunds([{ id: 're_other', status: 'succeeded', metadata: {} }]),
+    );
+    await expect(find(provider)).resolves.toBeNull();
+  });
+
+  it('confirms there is none when nothing was paid', async () => {
+    const { provider, calls } = providerReturning(
+      session({ payment_intent: null, payment_status: 'unpaid' }),
+    );
+    await expect(find(provider)).resolves.toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('cannot tell when there are more refunds than one page', async () => {
+    const { provider } = providerReturning(session(), refunds([], true));
+    await expect(find(provider)).rejects.toMatchObject({ retryable: true });
+  });
+});

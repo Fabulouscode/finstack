@@ -344,6 +344,25 @@ describe('Refunds (e2e)', () => {
     });
   });
 
+  const retry = async (refundId: string): Promise<RefundResponseDto> =>
+    (
+      await as(
+        adminToken,
+        'post',
+        `/v1/admin/refunds/${refundId}/retry`,
+      ).expect(200)
+    ).body as RefundResponseDto;
+
+  /** Moves a refund's last send into the past (beyond the in-flight window). */
+  const sentMinutesAgo = (
+    refundId: string,
+    minutes: number,
+  ): Promise<unknown> =>
+    dataSource.query(
+      `UPDATE refunds SET submitted_at = now() - make_interval(mins => $2) WHERE id = $1`,
+      [refundId, minutes],
+    );
+
   it('stays processing through a provider outage and settles on retry', async () => {
     const payment = await paidPayment(5_000, 'USD');
     mock.setRefundBehaviour('unavailable');
@@ -353,19 +372,75 @@ describe('Refunds (e2e)', () => {
     expect(created.status).toBe('processing');
 
     mock.setRefundBehaviour('successful');
-    const retried = (
-      await as(
-        adminToken,
-        'post',
-        `/v1/admin/refunds/${created.id}/retry`,
-      ).expect(200)
-    ).body as RefundResponseDto;
+    // Moments later, the first send may still be in flight: not resent.
+    expect((await retry(created.id)).status).toBe('processing');
+    expect(mock.refundsMadeFor(created.reference)).toBe(0);
 
-    expect(retried.status).toBe('successful');
+    // Later, the provider confirms it never got it: sent once.
+    await sentMinutesAgo(created.id, 10);
+    expect((await retry(created.id)).status).toBe('successful');
+    expect(mock.refundsMadeFor(created.reference)).toBe(1);
     await expect(wallet()).resolves.toMatchObject({
       available: 0,
       reserved: 0,
     });
+  });
+
+  it('never refunds twice when the provider made the refund but the response was lost', async () => {
+    const payment = await paidPayment(5_000, 'USD');
+    mock.setRefundBehaviour('lost');
+
+    const created = (await refund(payment.id, {}).expect(201))
+      .body as RefundResponseDto;
+    expect(created.status).toBe('processing');
+    expect(mock.refundsMadeFor(created.reference)).toBe(1);
+
+    // Retried long after: the provider is asked first and has the refund.
+    mock.setRefundBehaviour('successful');
+    await sentMinutesAgo(created.id, 10);
+    const retried = await retry(created.id);
+
+    expect(retried).toMatchObject({ status: 'successful' });
+    expect(retried.providerRefundReference).toMatch(/^mock_refund_/);
+    expect(mock.refundsMadeFor(created.reference)).toBe(1);
+    await expect(wallet()).resolves.toMatchObject({
+      available: 0,
+      reserved: 0,
+    });
+  });
+
+  it('keeps the hold and does not resend while the provider cannot tell', async () => {
+    const payment = await paidPayment(5_000, 'USD');
+    mock.setRefundBehaviour('lost');
+    const created = (await refund(payment.id, {}).expect(201))
+      .body as RefundResponseDto;
+
+    mock.setRefundBehaviour('unsure');
+    await sentMinutesAgo(created.id, 10);
+    expect((await retry(created.id)).status).toBe('processing');
+
+    expect(mock.refundsMadeFor(created.reference)).toBe(1);
+    await expect(wallet()).resolves.toMatchObject({
+      available: 0,
+      reserved: 5_000,
+    });
+  });
+
+  it('sends only once when retries race', async () => {
+    const payment = await paidPayment(5_000, 'USD');
+    mock.setRefundBehaviour('unavailable');
+    const created = (await refund(payment.id, {}).expect(201))
+      .body as RefundResponseDto;
+
+    mock.setRefundBehaviour('pending');
+    await sentMinutesAgo(created.id, 10);
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        as(adminToken, 'post', `/v1/admin/refunds/${created.id}/retry`),
+      ),
+    );
+
+    expect(mock.refundsMadeFor(created.reference)).toBe(1);
   });
 
   it('never over-refunds under concurrent requests', async () => {

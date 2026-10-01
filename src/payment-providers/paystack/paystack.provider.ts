@@ -6,6 +6,7 @@ import type { PaymentsConfig } from '../../config/payments.config';
 import { JsonHttpClient } from '../http/json-http-client';
 import {
   CreatePayoutRecipientInput,
+  FindRefundInput,
   InitializePaymentInput,
   InitiatePayoutInput,
   InitializePaymentResult,
@@ -25,6 +26,7 @@ import {
   VerifyPaymentInput,
   VerifyPaymentResult,
 } from '../payment-provider';
+import { pickOurRefund } from '../refund-lookup';
 
 export const PAYSTACK_SIGNATURE_HEADER = 'x-paystack-signature';
 
@@ -83,6 +85,13 @@ interface PaystackTransaction {
   amount: number;
   currency: string;
   gateway_response?: string;
+}
+
+interface PaystackRefund {
+  id: number;
+  status: string;
+  merchant_note?: string | null;
+  transaction?: number | string | { id?: number } | null;
 }
 
 interface PaystackWebhookBody {
@@ -256,6 +265,53 @@ export class PaystackProvider implements PaymentProvider {
       providerRefundReference: String(body.data.id),
       status: mapRefundStatus(body.data.status),
     };
+  }
+
+  /**
+   * Our refund among the payment's refunds (Paystack echoes our reference as
+   * `merchant_note`). Refunds are listed by Paystack's transaction id.
+   */
+  async findRefund(
+    input: FindRefundInput,
+  ): Promise<RefundPaymentResult | null> {
+    const { body: verified } = await this.call<PaystackTransaction>(
+      'GET',
+      `/transaction/verify/${encodeURIComponent(input.providerReference)}`,
+    );
+    const query = new URLSearchParams({
+      transaction: String(verified.data.id),
+      perPage: String(LIST_PAGE_SIZE),
+    });
+    const { body } = await this.call<PaystackRefund[]>(
+      'GET',
+      `/refund?${query.toString()}`,
+    );
+    if ((body.meta?.pageCount ?? 1) > 1) {
+      throw new PaymentProviderError(
+        'Paystack: too many refunds on this payment to check',
+        true,
+      );
+    }
+    // Never trust the filter: keep only this transaction's refunds.
+    const refunds = body.data.filter((refund) => {
+      const id =
+        typeof refund.transaction === 'object'
+          ? refund.transaction?.id
+          : refund.transaction;
+      return id === undefined || Number(id) === verified.data.id;
+    });
+    const ours = pickOurRefund(
+      refunds,
+      input.reference,
+      (refund) => refund.merchant_note,
+      'Paystack',
+    );
+    return ours
+      ? {
+          providerRefundReference: String(ours.id),
+          status: mapRefundStatus(ours.status),
+        }
+      : null;
   }
 
   /** HMAC-SHA512 of the raw body with the secret key, hex-encoded. */

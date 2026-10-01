@@ -5,6 +5,7 @@ import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import { paymentsConfig } from '../../config/payments.config';
 import type { PaymentsConfig } from '../../config/payments.config';
 import {
+  FindRefundInput,
   CreatePayoutRecipientInput,
   InitializePaymentInput,
   InitializePaymentResult,
@@ -58,9 +59,14 @@ export interface MockWebhookBody {
   };
 }
 
-/** How the next mock refund behaves (tests and local development). */
+/**
+ * How the next mock refund behaves (tests and local development). `lost`:
+ * the provider makes the refund but the response never arrives (a timeout),
+ * to exercise safe retries. `unsure`: lookups can't tell whether a refund
+ * exists.
+ */
 export type MockRefundBehaviour =
-  'successful' | 'pending' | 'rejected' | 'unavailable';
+  'successful' | 'pending' | 'rejected' | 'unavailable' | 'lost' | 'unsure';
 
 /**
  * How the next mock payouts behave. `lost`: the provider accepts the payout
@@ -185,11 +191,9 @@ export class MockPaymentProvider implements PaymentProvider {
         new PaymentProviderError('Mock provider timed out', true),
       );
     }
-    // Idempotent by our refund reference, like real providers.
-    const existing = [...this.refunds.values()].find(
-      (r) => r.reference === input.reference,
-    );
-    const refund = existing ?? {
+    // NOT idempotent, like Paystack and Flutterwave: every call makes a new
+    // refund, so FinStack must never send one twice.
+    const refund = {
       providerRefundReference: `mock_refund_${randomBytes(6).toString('hex')}`,
       reference: input.reference,
       status:
@@ -198,10 +202,40 @@ export class MockPaymentProvider implements PaymentProvider {
           : ('successful' as const),
     };
     this.refunds.set(refund.providerRefundReference, refund);
+    if (this.refundBehaviour === 'lost') {
+      return Promise.reject(
+        new PaymentProviderError('Mock provider timed out', true),
+      );
+    }
     return Promise.resolve({
       providerRefundReference: refund.providerRefundReference,
       status: refund.status,
     });
+  }
+
+  findRefund(input: FindRefundInput): Promise<RefundPaymentResult | null> {
+    if (this.refundBehaviour === 'unsure') {
+      return Promise.reject(
+        new PaymentProviderError('Mock provider cannot tell', true),
+      );
+    }
+    const refund = [...this.refunds.values()].find(
+      (r) => r.reference === input.reference,
+    );
+    return Promise.resolve(
+      refund
+        ? {
+            providerRefundReference: refund.providerRefundReference,
+            status: refund.status,
+          }
+        : null,
+    );
+  }
+
+  /** How many refunds the mock made for our reference (tests). */
+  refundsMadeFor(reference: string): number {
+    return [...this.refunds.values()].filter((r) => r.reference === reference)
+      .length;
   }
 
   getRefund(providerRefundReference: string): Promise<RefundPaymentResult> {

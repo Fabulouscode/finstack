@@ -5,6 +5,7 @@ import { paymentsConfig } from '../../config/payments.config';
 import type { PaymentsConfig } from '../../config/payments.config';
 import { JsonHttpClient } from '../http/json-http-client';
 import {
+  FindRefundInput,
   InitializePaymentInput,
   InitializePaymentResult,
   PaymentProvider,
@@ -196,6 +197,49 @@ export class StripeProvider implements PaymentProvider {
       providerRefundReference: refund.id,
       status: mapRefundStatus(refund.status),
     };
+  }
+
+  /**
+   * Our refund among the payment's refunds. Stripe always returns the
+   * `finstack_reference` metadata set on creation, so a refund without it
+   * is not ours. (The Idempotency-Key also protects resends, but Stripe
+   * keeps keys for only 24 hours.)
+   */
+  async findRefund(
+    input: FindRefundInput,
+  ): Promise<RefundPaymentResult | null> {
+    const session = await this.getSession(input.providerReference);
+    if (!session.payment_intent) {
+      return null; // nothing was paid, so nothing can have been refunded
+    }
+    const query = new URLSearchParams({
+      payment_intent: session.payment_intent,
+      limit: '100',
+    });
+    const list = await this.call<{
+      data: {
+        id: string;
+        status: string;
+        metadata?: Record<string, string>;
+      }[];
+      has_more: boolean;
+    }>('GET', `/v1/refunds?${query.toString()}`);
+    const ours = list.data.find(
+      (refund) => refund.metadata?.finstack_reference === input.reference,
+    );
+    if (ours) {
+      return {
+        providerRefundReference: ours.id,
+        status: mapRefundStatus(ours.status),
+      };
+    }
+    if (list.has_more) {
+      throw new PaymentProviderError(
+        'Stripe: too many refunds on this payment to check',
+        true,
+      );
+    }
+    return null;
   }
 
   async getRefund(

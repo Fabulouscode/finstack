@@ -502,3 +502,86 @@ describe('PaystackProvider reconciliation', () => {
     );
   });
 });
+
+describe('PaystackProvider.findRefund', () => {
+  function providerWith(...bodies: object[]): {
+    provider: PaystackProvider;
+    calls: Captured[];
+  } {
+    const calls: Captured[] = [];
+    const fetchFn = ((url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      const body = bodies[calls.length - 1] ?? {};
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status: 200 }),
+      );
+    }) as unknown as FetchFn;
+    return {
+      provider: new PaystackProvider(config, new JsonHttpClient(fetchFn)),
+      calls,
+    };
+  }
+  const refunds = (data: object[], pageCount = 1): object => ({
+    status: true,
+    message: 'Refunds retrieved',
+    data,
+    meta: { page: 1, pageCount },
+  });
+  const find = (
+    provider: PaystackProvider,
+  ): ReturnType<PaystackProvider['findRefund']> =>
+    provider.findRefund({ providerReference: 'trx_1', reference: 'rfd_1' });
+
+  it("lists the transaction's refunds by Paystack's id and finds ours by merchant_note", async () => {
+    const { provider, calls } = providerWith(
+      transaction(),
+      refunds([
+        {
+          id: 1,
+          status: 'processed',
+          merchant_note: 'rfd_0',
+          transaction: 4099,
+        },
+        { id: 2, status: 'pending', merchant_note: 'rfd_1', transaction: 4099 },
+      ]),
+    );
+
+    await expect(find(provider)).resolves.toEqual({
+      providerRefundReference: '2',
+      status: 'pending',
+    });
+    expect(calls[1]?.url).toBe(
+      'https://api.paystack.test/refund?transaction=4099&perPage=100',
+    );
+  });
+
+  it('confirms there is none when the payment has no refunds', async () => {
+    const { provider } = providerWith(transaction(), refunds([]));
+    await expect(find(provider)).resolves.toBeNull();
+  });
+
+  it("ignores another transaction's refunds even if the filter returned them", async () => {
+    const { provider } = providerWith(
+      transaction(),
+      refunds([
+        { id: 9, status: 'processed', merchant_note: 'rfd_1', transaction: 1 },
+      ]),
+    );
+    await expect(find(provider)).resolves.toBeNull();
+  });
+
+  it('cannot tell when a refund has no merchant note', async () => {
+    const { provider } = providerWith(
+      transaction(),
+      refunds([
+        { id: 2, status: 'processed', merchant_note: null, transaction: 4099 },
+      ]),
+    );
+    await expect(find(provider)).rejects.toMatchObject({ retryable: true });
+  });
+
+  it('cannot tell when there is more than one page of refunds', async () => {
+    const { provider } = providerWith(transaction(), refunds([], 2));
+    await expect(find(provider)).rejects.toMatchObject({ retryable: true });
+  });
+});

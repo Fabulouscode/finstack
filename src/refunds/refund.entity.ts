@@ -120,6 +120,13 @@ export class Refund {
   @Column({ type: 'varchar', length: 255, nullable: true })
   providerRefundReference: string | null;
 
+  /**
+   * When the refund was last sent to the provider. Once set, the provider is
+   * always asked about the refund before it is sent again.
+   */
+  @Column({ type: 'timestamptz', precision: 3, nullable: true })
+  submittedAt: Date | null;
+
   @Column({ type: 'varchar', length: 500 })
   reason: string;
 

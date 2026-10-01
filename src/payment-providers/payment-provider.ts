@@ -40,6 +40,13 @@ export interface RefundPaymentInput {
   reference: string;
 }
 
+export interface FindRefundInput {
+  /** The refunded payment's provider reference. */
+  providerReference: string;
+  /** Our refund reference, as sent with refundPayment(). */
+  reference: string;
+}
+
 export interface RefundPaymentResult {
   providerRefundReference: string;
   status: ProviderPaymentStatus;
@@ -190,6 +197,14 @@ export interface PaymentProvider {
 
   /** Authoritative state of a refund created with refundPayment(). */
   getRefund(providerRefundReference: string): Promise<RefundPaymentResult>;
+
+  /**
+   * The refund created with OUR reference, or null only when the provider
+   * confirms it has none. When it can't tell, it must throw (retryable).
+   * A refund whose sending had an unknown outcome (e.g. a timeout) is only
+   * sent again after this returns null, so a retry can't refund twice.
+   */
+  findRefund(input: FindRefundInput): Promise<RefundPaymentResult | null>;
 
   /** Checks the webhook signature against the exact raw request body. */
   verifyWebhookSignature(
