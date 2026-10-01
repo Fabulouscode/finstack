@@ -59,7 +59,7 @@ export class AuditActorDto {
   @ApiProperty({ enum: AuditActorType, example: AuditActorType.User })
   type: AuditActorType;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   id: string | null;
 }
 
@@ -73,7 +73,7 @@ export class AuditLogResponseDto {
   @ApiProperty({ type: AuditActorDto })
   actor: AuditActorDto;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   organizationId: string | null;
 
   @ApiProperty({ example: 'membership' })
@@ -89,10 +89,10 @@ export class AuditLogResponseDto {
   })
   metadata: Record<string, unknown>;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   requestId: string | null;
 
-  @ApiProperty({ nullable: true, example: '203.0.113.7' })
+  @ApiProperty({ type: String, nullable: true, example: '203.0.113.7' })
   ipAddress: string | null;
 
   @ApiProperty({ format: 'date-time' })

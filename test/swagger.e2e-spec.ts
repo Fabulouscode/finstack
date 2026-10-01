@@ -38,6 +38,31 @@ describe('Swagger (e2e)', () => {
       });
     });
 
+    it('gives every nullable field a real type, so generated clients are correct', () => {
+      // `string | null` can't be inferred by the Swagger decorators, which then
+      // describe the field as an object; clients would get the wrong type.
+      const untyped = Object.entries(
+        document.components?.schemas ?? {},
+      ).flatMap(([schema, definition]) =>
+        Object.entries(
+          (definition as { properties?: Record<string, object> }).properties ??
+            {},
+        )
+          .filter(([, property]) => {
+            const p = property as Record<string, unknown>;
+            return (
+              p.nullable === true &&
+              p.type === 'object' &&
+              !p.allOf &&
+              !p.properties &&
+              !p.additionalProperties
+            );
+          })
+          .map(([name]) => `${schema}.${name}`),
+      );
+      expect(untyped).toEqual([]);
+    });
+
     it('documents the health endpoints with their responses', () => {
       const ready = document.paths['/health/ready']?.get;
 

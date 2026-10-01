@@ -103,7 +103,7 @@ class InFlightDto {
   @ApiProperty({ example: 2 })
   count: number;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   oldest: Date | null;
 }
 

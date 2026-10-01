@@ -4,6 +4,9 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Fixed
+- The OpenAPI document described 61 nullable fields (for example `completedAt`, `failureCode`, `providerReference`) as objects, so generated clients had the wrong types. They now carry their real type, and a test fails if one is ever untyped again.
+
 ### Added
 - Admin lists: `GET /v1/admin/payments` (and `/payments/:id`), `/refunds` and `/payouts`, newest first with cursor paging, filterable by status, provider, currency and owner (or payment, for refunds).
 - `payments:read` and `refunds:read` permissions, held by every staff role, so support can see payments and refunds without being able to move money.

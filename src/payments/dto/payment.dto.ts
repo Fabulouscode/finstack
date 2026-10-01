@@ -119,10 +119,15 @@ export class PaymentResponseDto {
   @ApiProperty({ example: 'mock' })
   provider: string;
 
-  @ApiProperty({ nullable: true, example: 'mock_4f9a2c1e7b3d5a8c' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'mock_4f9a2c1e7b3d5a8c',
+  })
   providerReference: string | null;
 
   @ApiProperty({
+    type: String,
     nullable: true,
     description: 'Send the customer here to pay',
     example: 'https://checkout.mock-provider.test/pay/mock_4f9a2c1e7b3d5a8c',
@@ -146,13 +151,13 @@ export class PaymentResponseDto {
   })
   conversion: PaymentCreditDto | null;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: String, nullable: true, example: null })
   failureCode: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   completedAt: Date | null;
 
   @ApiProperty({
@@ -164,6 +169,7 @@ export class PaymentResponseDto {
   fee: FeeDto | null;
 
   @ApiProperty({
+    type: Date,
     format: 'date-time',
     nullable: true,
     description:

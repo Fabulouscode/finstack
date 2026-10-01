@@ -30,10 +30,10 @@ import { AdminService } from './admin.service';
 import { AdminReasonRequestDto } from './dto/admin.dto';
 
 class AdminWalletDto extends WalletResponseDto {
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   userId: string | null;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   organizationId: string | null;
 
   static fromWallet(view: WalletWithBalances): AdminWalletDto {

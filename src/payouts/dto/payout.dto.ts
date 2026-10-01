@@ -80,7 +80,7 @@ export class PayoutDestinationResponseDto {
   @ApiProperty({ example: '058' })
   bankCode: string;
 
-  @ApiProperty({ nullable: true, example: 'Guaranty Trust Bank' })
+  @ApiProperty({ type: String, nullable: true, example: 'Guaranty Trust Bank' })
   bankName: string | null;
 
   @ApiProperty({ example: 'ADA LOVELACE' })
@@ -89,7 +89,7 @@ export class PayoutDestinationResponseDto {
   @ApiProperty({ example: '6789' })
   accountNumberLast4: string;
 
-  @ApiProperty({ nullable: true, example: 'Main account' })
+  @ApiProperty({ type: String, nullable: true, example: 'Main account' })
   label: string | null;
 
   @ApiProperty({
@@ -195,19 +195,19 @@ export class PayoutResponseDto {
   @ApiProperty({ example: 'paystack' })
   provider: string;
 
-  @ApiProperty({ nullable: true, example: 'TRF_1ptvuv321ahaa7q' })
+  @ApiProperty({ type: String, nullable: true, example: 'TRF_1ptvuv321ahaa7q' })
   providerReference: string | null;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: String, nullable: true, example: null })
   failureCode: string | null;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: String, nullable: true, example: null })
   failureReason: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   completedAt: Date | null;
 
   static from({

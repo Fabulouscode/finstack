@@ -98,6 +98,7 @@ export class ReconciliationRunResponseDto {
   id: string;
 
   @ApiProperty({
+    type: String,
     nullable: true,
     description: 'Null for ledger checks',
     example: 'paystack',
@@ -129,13 +130,13 @@ export class ReconciliationRunResponseDto {
   })
   summary: Record<string, unknown>;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   error: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   finishedAt: Date | null;
 
   static from(run: ReconciliationRun): ReconciliationRunResponseDto {
@@ -170,10 +171,14 @@ export class ReconciliationItemResponseDto {
   @ApiProperty({ enum: ReconciliationItemStatus })
   status: ReconciliationItemStatus;
 
-  @ApiProperty({ nullable: true, example: 'trx_9f2c4e1a7b3d5c8e6f0a' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'trx_9f2c4e1a7b3d5c8e6f0a',
+  })
   reference: string | null;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   targetId: string | null;
 
   @ApiProperty({ type: 'object', additionalProperties: true, nullable: true })
@@ -182,10 +187,10 @@ export class ReconciliationItemResponseDto {
   @ApiProperty({ type: 'object', additionalProperties: true, nullable: true })
   provider: Record<string, unknown> | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   resolutionNote: string | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   resolvedAt: Date | null;
 
   @ApiProperty({ format: 'date-time' })

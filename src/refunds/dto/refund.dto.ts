@@ -90,16 +90,17 @@ export class RefundResponseDto {
   @ApiProperty({ example: 'paystack' })
   provider: string;
 
-  @ApiProperty({ nullable: true, example: '3018284' })
+  @ApiProperty({ type: String, nullable: true, example: '3018284' })
   providerRefundReference: string | null;
 
   @ApiProperty({ example: 'Customer requested cancellation' })
   reason: string;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: String, nullable: true, example: null })
   failureCode: string | null;
 
   @ApiProperty({
+    type: String,
     nullable: true,
     example: null,
     description: "Why it failed, including the provider's own message",
@@ -109,7 +110,7 @@ export class RefundResponseDto {
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   completedAt: Date | null;
 
   static from({ refund, transaction }: RefundView): RefundResponseDto {

@@ -134,7 +134,7 @@ export class WebhookEndpointResponseDto {
   @ApiProperty({ example: 'https://api.example.com/finstack/webhooks' })
   url: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   description: string | null;
 
   @ApiProperty({ type: [String], example: ['payment.successful'] })
@@ -144,6 +144,7 @@ export class WebhookEndpointResponseDto {
   enabled: boolean;
 
   @ApiProperty({
+    type: String,
     nullable: true,
     example: null,
     description: 'Set when FinStack disabled it (e.g. repeated failures)',
@@ -151,6 +152,7 @@ export class WebhookEndpointResponseDto {
   disabledReason: string | null;
 
   @ApiProperty({
+    type: Date,
     format: 'date-time',
     nullable: true,
     description:
@@ -204,16 +206,16 @@ export class WebhookDeliveryResponseDto {
   @ApiProperty({ example: 1 })
   attempts: number;
 
-  @ApiProperty({ nullable: true, example: 200 })
+  @ApiProperty({ type: Number, nullable: true, example: 200 })
   lastResponseStatus: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   lastError: string | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   lastAttemptAt: Date | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   deliveredAt: Date | null;
 
   @ApiProperty({

@@ -162,7 +162,7 @@ export class FeeRuleResponseDto {
   @ApiProperty({ example: 'USD' })
   currency: string;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   organizationId: string | null;
 
   @ApiProperty({ example: 30 })
@@ -174,7 +174,7 @@ export class FeeRuleResponseDto {
   @ApiProperty({ example: 0 })
   minAmount: number;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: Number, nullable: true, example: null })
   maxAmount: number | null;
 
   @ApiProperty({ description: 'False once superseded or retired' })
@@ -183,7 +183,7 @@ export class FeeRuleResponseDto {
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   supersededAt: Date | null;
 
   static from(rule: FeeRule): FeeRuleResponseDto {

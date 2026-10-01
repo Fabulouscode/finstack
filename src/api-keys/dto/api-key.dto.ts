@@ -64,13 +64,13 @@ export class ApiKeyResponseDto {
   @ApiProperty({ type: [String], example: ['payments:create'] })
   scopes: string[];
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   lastUsedAt: Date | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   expiresAt: Date | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   revokedAt: Date | null;
 
   @ApiProperty({ format: 'date-time' })

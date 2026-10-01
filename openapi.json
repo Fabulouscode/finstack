@@ -12073,7 +12073,7 @@
             "example": "user"
           },
           "id": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           }
@@ -12098,7 +12098,7 @@
             "$ref": "#/components/schemas/AuditActorDto"
           },
           "organizationId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           },
@@ -12118,11 +12118,11 @@
             }
           },
           "requestId": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "ipAddress": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "203.0.113.7"
           },
@@ -12572,18 +12572,18 @@
             }
           },
           "lastUsedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "expiresAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "revokedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "createdAt": {
@@ -12634,18 +12634,18 @@
             }
           },
           "lastUsedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "expiresAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "revokedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "createdAt": {
@@ -13144,7 +13144,7 @@
             "example": "USD"
           },
           "walletId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true,
             "description": "Your wallet involved"
@@ -13160,12 +13160,12 @@
             ]
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "Dinner split"
           },
           "failureCode": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null
           },
@@ -13174,8 +13174,8 @@
             "type": "string"
           },
           "completedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },
@@ -13234,7 +13234,7 @@
             "example": "USD"
           },
           "organizationId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           },
@@ -13251,7 +13251,7 @@
             "example": 0
           },
           "maxAmount": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": null
           },
@@ -13264,8 +13264,8 @@
             "type": "string"
           },
           "supersededAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },
@@ -13395,7 +13395,7 @@
             "example": "USD"
           },
           "maxPerTransaction": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": 500000
           },
@@ -13450,27 +13450,27 @@
             "example": "USD"
           },
           "organizationId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           },
           "maxPerTransaction": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": 500000
           },
           "maxDailyAmount": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": 1000000
           },
           "maxDailyCount": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": 10
           },
           "maxMonthlyAmount": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": null
           },
@@ -13631,12 +13631,12 @@
             "example": "mock"
           },
           "providerReference": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "mock_4f9a2c1e7b3d5a8c"
           },
           "authorizationUrl": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "description": "Send the customer here to pay",
             "example": "https://checkout.mock-provider.test/pay/mock_4f9a2c1e7b3d5a8c"
@@ -13666,7 +13666,7 @@
             ]
           },
           "failureCode": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null
           },
@@ -13675,8 +13675,8 @@
             "type": "string"
           },
           "completedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "fee": {
@@ -13690,8 +13690,8 @@
             ]
           },
           "fundsAvailableAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true,
             "description": "When the credited money is (or becomes) spendable. Later than `completedAt` under a settlement hold (PAYMENT_SETTLEMENT_DELAY_SECONDS); null until credited."
           },
@@ -13922,7 +13922,7 @@
             "example": "paystack"
           },
           "providerRefundReference": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "3018284"
           },
@@ -13931,12 +13931,12 @@
             "example": "Customer requested cancellation"
           },
           "failureCode": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null
           },
           "failureReason": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null,
             "description": "Why it failed, including the provider's own message"
@@ -13946,8 +13946,8 @@
             "type": "string"
           },
           "completedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },
@@ -14063,7 +14063,7 @@
             "example": "058"
           },
           "bankName": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "Guaranty Trust Bank"
           },
@@ -14076,7 +14076,7 @@
             "example": "6789"
           },
           "label": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "Main account"
           },
@@ -14187,17 +14187,17 @@
             "example": "paystack"
           },
           "providerReference": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "TRF_1ptvuv321ahaa7q"
           },
           "failureCode": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null
           },
           "failureReason": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null
           },
@@ -14206,8 +14206,8 @@
             "type": "string"
           },
           "completedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },
@@ -14288,7 +14288,7 @@
             "format": "uuid"
           },
           "provider": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "description": "Null for ledger checks",
             "example": "paystack"
@@ -14331,7 +14331,7 @@
             }
           },
           "error": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "createdAt": {
@@ -14339,8 +14339,8 @@
             "type": "string"
           },
           "finishedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },
@@ -14398,12 +14398,12 @@
             ]
           },
           "reference": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "trx_9f2c4e1a7b3d5c8e6f0a"
           },
           "targetId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           },
@@ -14418,12 +14418,12 @@
             "nullable": true
           },
           "resolutionNote": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "resolvedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "createdAt": {
@@ -14509,8 +14509,8 @@
             "example": 2
           },
           "oldest": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },
@@ -14846,12 +14846,12 @@
             "example": "2026-09-24T10:00:00.000Z"
           },
           "userId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           },
           "organizationId": {
-            "type": "object",
+            "type": "string",
             "format": "uuid",
             "nullable": true
           }
@@ -14919,7 +14919,7 @@
             "example": "https://api.example.com/finstack/webhooks"
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "eventTypes": {
@@ -14935,14 +14935,14 @@
             "type": "boolean"
           },
           "disabledReason": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null,
             "description": "Set when FinStack disabled it (e.g. repeated failures)"
           },
           "previousSecretExpiresAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true,
             "description": "Until when the previous secret still signs (after a rotation)"
           },
@@ -14980,7 +14980,7 @@
             "example": "https://api.example.com/finstack/webhooks"
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "eventTypes": {
@@ -14996,14 +14996,14 @@
             "type": "boolean"
           },
           "disabledReason": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": null,
             "description": "Set when FinStack disabled it (e.g. repeated failures)"
           },
           "previousSecretExpiresAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true,
             "description": "Until when the previous secret still signs (after a rotation)"
           },
@@ -15099,22 +15099,22 @@
             "example": 1
           },
           "lastResponseStatus": {
-            "type": "object",
+            "type": "number",
             "nullable": true,
             "example": 200
           },
           "lastError": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "lastAttemptAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "deliveredAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           },
           "payload": {
@@ -15207,7 +15207,7 @@
             ]
           },
           "outcome": {
-            "type": "object",
+            "type": "string",
             "nullable": true,
             "example": "credited"
           },
@@ -15216,7 +15216,7 @@
             "example": 1
           },
           "lastError": {
-            "type": "object",
+            "type": "string",
             "nullable": true
           },
           "receivedAt": {
@@ -15224,8 +15224,8 @@
             "type": "string"
           },
           "processedAt": {
-            "type": "object",
             "format": "date-time",
+            "type": "string",
             "nullable": true
           }
         },

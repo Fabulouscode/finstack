@@ -103,6 +103,7 @@ export class TransactionResponseDto {
   currency: string;
 
   @ApiProperty({
+    type: String,
     format: 'uuid',
     nullable: true,
     description: 'Your wallet involved',
@@ -117,16 +118,16 @@ export class TransactionResponseDto {
   })
   fee: FeeDto | null;
 
-  @ApiProperty({ nullable: true, example: 'Dinner split' })
+  @ApiProperty({ type: String, nullable: true, example: 'Dinner split' })
   description: string | null;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: String, nullable: true, example: null })
   failureCode: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   completedAt: Date | null;
 
   static from(

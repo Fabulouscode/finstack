@@ -50,11 +50,12 @@ export class WebhookEventDto {
   @ApiProperty({ example: 'evt_4f9a2c1e7b3d5a8c' }) eventId: string;
   @ApiProperty({ example: 'payment.succeeded' }) type: string;
   @ApiProperty({ enum: WebhookEventStatus }) status: WebhookEventStatus;
-  @ApiProperty({ nullable: true, example: 'credited' }) outcome: string | null;
+  @ApiProperty({ type: String, nullable: true, example: 'credited' })
+  outcome: string | null;
   @ApiProperty({ example: 1 }) attempts: number;
-  @ApiProperty({ nullable: true }) lastError: string | null;
+  @ApiProperty({ type: String, nullable: true }) lastError: string | null;
   @ApiProperty({ format: 'date-time' }) receivedAt: Date;
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ type: Date, format: 'date-time', nullable: true })
   processedAt: Date | null;
 
   static from(event: WebhookEvent): WebhookEventDto {

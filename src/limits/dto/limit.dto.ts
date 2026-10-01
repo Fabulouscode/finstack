@@ -115,19 +115,19 @@ export class LimitRuleResponseDto {
   @ApiProperty({ example: 'USD' })
   currency: string;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   organizationId: string | null;
 
-  @ApiProperty({ nullable: true, example: 500000 })
+  @ApiProperty({ type: Number, nullable: true, example: 500000 })
   maxPerTransaction: number | null;
 
-  @ApiProperty({ nullable: true, example: 1000000 })
+  @ApiProperty({ type: Number, nullable: true, example: 1000000 })
   maxDailyAmount: number | null;
 
-  @ApiProperty({ nullable: true, example: 10 })
+  @ApiProperty({ type: Number, nullable: true, example: 10 })
   maxDailyCount: number | null;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: Number, nullable: true, example: null })
   maxMonthlyAmount: number | null;
 
   @ApiProperty()
@@ -159,7 +159,7 @@ export class LimitUsageResponseDto {
   @ApiProperty({ example: 'USD' })
   currency: string;
 
-  @ApiProperty({ nullable: true, example: 500000 })
+  @ApiProperty({ type: Number, nullable: true, example: 500000 })
   maxPerTransaction: number | null;
 
   @ApiProperty({
