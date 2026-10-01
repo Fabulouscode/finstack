@@ -2,6 +2,16 @@
 
 All notable changes to FinStack. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may include breaking changes, listed under **Changed**.
 
+## [0.1.1] - 2026-10-01
+
+Fixes found by testing FinStack end to end against real Paystack and Stripe test accounts: payments, webhooks, partial refunds, payouts and reconciliation.
+
+### Fixed
+- Paystack reconciliation no longer flags a settled payment as `credited_without_payment` while a refund is in progress. Paystack reports such transactions as `reversal-pending`, which is now read as collected.
+- Verified provider events that FinStack doesn't act on (such as Paystack's `refund.pending`) are recorded as `unhandled_event_type`, not the misleading `no_matching_payment`.
+- Refund webhooks that arrive after the refund has already settled (Stripe settles test refunds immediately, then sends `refund.created` and `refund.updated`) are recorded as `refund_already_final`, not `no_matching_refund`.
+- A flaky API-key test that could fail when the random secret contained `_`.
+
 ## [0.1.0] - 2026-09-26
 
 The first release: a complete fintech backend foundation. Decisions are recorded in `docs/adr/` (ADRs 0001–0029).
@@ -36,4 +46,5 @@ The first release: a complete fintech backend foundation. Decisions are recorded
 - Sandbox deployments (`SANDBOX_MODE`) with an owner-checked simulation API and test bank accounts.
 - CI: format, lint, type-check, build, unit, integration and end-to-end tests, and a schema drift check.
 
+[0.1.1]: https://github.com/Fabulouscode/finstack/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Fabulouscode/finstack/releases/tag/v0.1.0
