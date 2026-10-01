@@ -224,6 +224,32 @@ describe('Payments: first vertical slice (e2e)', () => {
       await expect(walletBalance()).resolves.toBe(5_000);
     });
 
+    it('ignores a verified event type it does not handle, and says so', async () => {
+      const payment = await startPayment({ amount: 5_000, currency: 'USD' });
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          id: 'evt_refund_pending',
+          event: 'refund.pending',
+          data: {
+            reference: 'ref_1',
+            provider_reference: payment.providerReference,
+          },
+        }),
+      );
+
+      await deliverWebhook(rawBody, mock.sign(rawBody)).expect(200);
+
+      await eventually(async () => {
+        expect(await webhookEvents()).toEqual([
+          expect.objectContaining({
+            status: 'ignored',
+            outcome: 'unhandled_event_type',
+          }),
+        ]);
+      });
+      await expect(walletBalance()).resolves.toBe(0);
+    });
+
     it('rejects a webhook with a bad signature and stores nothing', async () => {
       const payment = await startPayment({ amount: 5_000, currency: 'USD' });
       const { rawBody, signature } = mock.simulateOutcome(

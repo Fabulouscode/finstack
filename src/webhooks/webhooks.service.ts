@@ -209,6 +209,17 @@ export class WebhooksService {
         return counted(status);
       }
 
+      if (event.type === 'unknown') {
+        // Verified, but not an event FinStack acts on (e.g. refund.pending).
+        await this.finish(
+          event.id,
+          WebhookEventStatus.Ignored,
+          attempts,
+          'unhandled_event_type',
+        );
+        return counted(WebhookEventStatus.Ignored);
+      }
+
       const payment =
         event.type.startsWith('payment.') && event.providerReference
           ? await this.payments.findByProviderReference(
