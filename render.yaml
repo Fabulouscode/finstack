@@ -1,0 +1,91 @@
+# Render Blueprint: one-click FinStack on Render (https://render.com/docs/blueprint-spec).
+#
+# Creates PostgreSQL 17, Redis-compatible Key Value and the API (with its
+# background workers) as a SANDBOX deployment: production settings, but the
+# mock provider and test keys, so no real money can move. To go live, follow
+# docs/deployment.md#going-live.
+#
+# Free plans are for trying FinStack only: the free database expires after
+# 30 days, free Key Value keeps no data across restarts, and the free web
+# service sleeps when idle. Use paid plans for anything real.
+
+services:
+  - type: web
+    name: finstack-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Migrations run before the app starts. On a paid plan, move the first
+    # half to `preDeployCommand` so a failed migration never takes traffic.
+    dockerCommand: >-
+      sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js
+      && exec node dist/main.js"
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SANDBOX_MODE
+        value: 'true'
+      - key: SWAGGER_ENABLED
+        value: 'true'
+      # Render's proxy sits in front of the app.
+      - key: TRUST_PROXY_HOPS
+        value: '1'
+
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: finstack-db
+          property: host
+      - key: DATABASE_PORT
+        fromDatabase:
+          name: finstack-db
+          property: port
+      - key: DATABASE_USER
+        fromDatabase:
+          name: finstack-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: finstack-db
+          property: password
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: finstack-db
+          property: database
+
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: finstack-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: finstack-redis
+          property: port
+
+      # Random 256-bit values, generated once by Render.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true
+      - key: METRICS_TOKEN
+        generateValue: true
+      # Signs the sandbox's simulated provider webhooks.
+      - key: MOCK_PROVIDER_WEBHOOK_SECRET
+        generateValue: true
+
+  - type: keyvalue
+    name: finstack-redis
+    plan: free
+    # BullMQ needs keys never to be evicted.
+    maxmemoryPolicy: noeviction
+    # Reachable only from services in this Render account.
+    ipAllowList: []
+
+databases:
+  - name: finstack-db
+    plan: free
+    postgresMajorVersion: '17'
+    databaseName: finstack
+    user: finstack

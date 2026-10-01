@@ -2,6 +2,12 @@
 
 All notable changes to FinStack. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may include breaking changes, listed under **Changed**.
 
+## [Unreleased]
+
+### Added
+- Deployment guide (`docs/deployment.md`): any Docker host, production configuration, provider webhooks and a go-live checklist.
+- Render Blueprint (`render.yaml`) and a "Deploy to Render" button that creates a sandbox deployment.
+
 ## [0.1.1] - 2026-10-01
 
 Fixes found by testing FinStack end to end against real Paystack and Stripe test accounts: payments, webhooks, partial refunds, payouts and reconciliation.

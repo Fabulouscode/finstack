@@ -51,6 +51,12 @@ This starts PostgreSQL and Redis, runs migrations in a one-shot `migrate` contai
 
 `DATABASE_PORT`, `REDIS_PORT` and `PORT` in `.env` are also the host ports Compose publishes. Change them if they clash with services already running on your machine.
 
+## Deploying
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Fabulouscode/finstack)
+
+The button creates PostgreSQL, Redis and the API in your Render account as a **sandbox**: production settings with test money, so nothing real can move. To deploy on any Docker host, configure production and go live, see the [deployment guide](./docs/deployment.md).
+
 ## Configuration
 
 Configuration is read from environment variables (and `.env` in development), validated at startup and exposed to the code as typed namespaces. If any variable is missing or invalid, the app refuses to boot and lists every problem.
@@ -676,7 +682,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 - [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe), currency routing (local → Paystack, international → Stripe, overridable), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
-- [ ] **Phase 4 — Developer platform** (done: sandbox): CLI, more providers, dashboard
+- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint): CLI, more providers, dashboard
 
 ## Architecture decisions
 
