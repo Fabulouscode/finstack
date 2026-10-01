@@ -135,3 +135,15 @@ export class RefundResponseDto {
     };
   }
 }
+
+export class AdminRefundsPageDto {
+  @ApiProperty({ type: [RefundResponseDto] })
+  data: RefundResponseDto[];
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Pass as `cursor` for the next page; null on the last page',
+  })
+  nextCursor: string | null;
+}

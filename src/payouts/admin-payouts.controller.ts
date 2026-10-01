@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,9 +16,14 @@ import {
 } from '@nestjs/swagger';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { PlatformPermission } from '../auth/platform-permissions';
-import { ApiProblemResponse } from '../docs/api-problem-response.decorator';
+import { AdminOwnedMoneyListQueryDto } from '../common/pagination/admin-list-query.dto';
+import { encodeCursor } from '../common/pagination/cursor';
+import {
+  ApiProblemResponse,
+  ApiValidationProblemResponse,
+} from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { PayoutResponseDto } from './dto/payout.dto';
+import { AdminPayoutsPageDto, PayoutResponseDto } from './dto/payout.dto';
 import { PayoutsService } from './payouts.service';
 
 @ApiTags('Admin')
@@ -31,6 +37,24 @@ import { PayoutsService } from './payouts.service';
 @Controller('admin/payouts')
 export class AdminPayoutsController {
   constructor(private readonly payouts: PayoutsService) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List payouts',
+    description:
+      "Every user's and organization's payouts, newest first. Filter by status, provider, currency or owner.",
+  })
+  @ApiOkResponse({ type: AdminPayoutsPageDto })
+  @ApiValidationProblemResponse()
+  async list(
+    @Query() query: AdminOwnedMoneyListQueryDto,
+  ): Promise<AdminPayoutsPageDto> {
+    const { views, next } = await this.payouts.search(query, query.page());
+    return {
+      data: views.map((view) => PayoutResponseDto.from(view)),
+      nextCursor: next ? encodeCursor(next) : null,
+    };
+  }
 
   @Get(':payoutId')
   @ApiOperation({ summary: 'Get any payout' })

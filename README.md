@@ -572,14 +572,17 @@ Platform admins (`role = admin`) can find accounts, see their money, and act. Ev
 | `GET /v1/admin/organizations?name=&status=`, `GET …/organizations/:id` | Search organizations; members and wallets |
 | `POST /v1/admin/organizations/:id/suspend` · `/reactivate` | Read-only for members; API keys stop working |
 | `GET /v1/admin/wallets/:id`, `POST …/freeze` · `/unfreeze` | A wallet with its owner; freezing stops money leaving it |
+| `GET /v1/admin/payments`, `GET …/payments/:id` | Every payment, newest first. Filter by `status`, `provider`, `currency`, `userId` or `organizationId` |
+| `GET /v1/admin/refunds` | Every refund. Filter by `status`, `provider`, `currency` or `paymentId` |
+| `GET /v1/admin/payouts` | Every payout. Same filters as payments |
 
-Other admin endpoints live with their features: refunds, payment releases, payouts, reconciliation, webhook events, FX rates and audit logs. See [ADR 0023](./docs/adr/0023-admin-tooling.md).
+Lists are paged with `limit` (up to 100) and the `nextCursor` of the previous page. Other admin endpoints live with their features: refunds, payment releases, payouts, reconciliation, webhook events, FX rates and audit logs. See [ADR 0023](./docs/adr/0023-admin-tooling.md).
 
 **Staff roles.** Each admin endpoint requires a platform permission, and staff get roles that bundle them:
 
 | Role | Can |
 | --- | --- |
-| `support` | Read-only: overview, users, organizations, wallets, payouts, audit log |
+| `support` | Read-only: overview, users, organizations, wallets, payments, refunds, payouts, audit log |
 | `risk` | + suspend users and organizations, freeze wallets, set limits, manage payouts |
 | `finance` | + refunds, early releases, reconciliation, fees, FX rates, provider webhooks, payouts |
 | `admin` | Everything, including assigning roles |
@@ -672,6 +675,8 @@ Then sign in again so the new access token carries the role.
 | `/docs-yaml` | OpenAPI 3 document (YAML) |
 
 Docs are enabled by default everywhere except production. Set `SWAGGER_ENABLED` to override.
+
+The same document is committed as [`openapi.json`](./openapi.json), so clients can generate their types from a released version. `npm run openapi` regenerates it without a database. CI fails if it doesn't match the code, so update it in the same change as the API.
 
 Every endpoint must document:
 

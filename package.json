@@ -13,6 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "listen": "node dist/cli/finstack.js listen",
+    "openapi": "npm run build && node dist/docs/export-openapi.js",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",

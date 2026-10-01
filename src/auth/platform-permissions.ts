@@ -13,6 +13,8 @@ export enum PlatformPermission {
   ReadWallets = 'wallets:read',
   ManageWallets = 'wallets:manage',
   ReadAuditLogs = 'audit:read',
+  ReadPayments = 'payments:read',
+  ReadRefunds = 'refunds:read',
   ReadPayouts = 'payouts:read',
   ManagePayouts = 'payouts:manage',
   ManageRefunds = 'refunds:manage',
@@ -34,6 +36,8 @@ const SUPPORT = [
   P.ReadOrganizations,
   P.ReadWallets,
   P.ReadAuditLogs,
+  P.ReadPayments,
+  P.ReadRefunds,
   P.ReadPayouts,
 ];
 

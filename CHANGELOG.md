@@ -4,6 +4,11 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+- Admin lists: `GET /v1/admin/payments` (and `/payments/:id`), `/refunds` and `/payouts`, newest first with cursor paging, filterable by status, provider, currency and owner (or payment, for refunds).
+- `payments:read` and `refunds:read` permissions, held by every staff role, so support can see payments and refunds without being able to move money.
+- `openapi.json`: the API's OpenAPI document, committed for clients to generate types from. `npm run openapi` regenerates it, and CI checks it matches the code.
+
 ## [0.3.0] - 2026-10-01
 
 Easier to develop with, and refunds that settle on their own. No migrations or breaking changes.

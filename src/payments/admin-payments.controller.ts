@@ -1,10 +1,12 @@
 import {
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -14,9 +16,14 @@ import {
 } from '@nestjs/swagger';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { PlatformPermission } from '../auth/platform-permissions';
-import { ApiProblemResponse } from '../docs/api-problem-response.decorator';
+import { encodeCursor } from '../common/pagination/cursor';
+import { AdminOwnedMoneyListQueryDto } from '../common/pagination/admin-list-query.dto';
+import {
+  ApiProblemResponse,
+  ApiValidationProblemResponse,
+} from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
-import { PaymentResponseDto } from './dto/payment.dto';
+import { AdminPaymentsPageDto, PaymentResponseDto } from './dto/payment.dto';
 import { PaymentsService } from './payments.service';
 import { SettlementReleaseService } from './settlement-release.service';
 
@@ -34,6 +41,41 @@ export class AdminPaymentsController {
     private readonly payments: PaymentsService,
     private readonly release: SettlementReleaseService,
   ) {}
+
+  @Get()
+  @RequirePermission(PlatformPermission.ReadPayments)
+  @ApiOperation({
+    summary: 'List payments',
+    description:
+      "Every user's and organization's payments, newest first. Filter by status, provider, currency or owner.",
+  })
+  @ApiOkResponse({ type: AdminPaymentsPageDto })
+  @ApiValidationProblemResponse()
+  async list(
+    @Query() query: AdminOwnedMoneyListQueryDto,
+  ): Promise<AdminPaymentsPageDto> {
+    const { views, next } = await this.payments.searchForAdmin(
+      query,
+      query.page(),
+    );
+    return {
+      data: views.map((view) => PaymentResponseDto.from(view)),
+      nextCursor: next ? encodeCursor(next) : null,
+    };
+  }
+
+  @Get(':paymentId')
+  @RequirePermission(PlatformPermission.ReadPayments)
+  @ApiOperation({ summary: 'Get any payment' })
+  @ApiOkResponse({ type: PaymentResponseDto })
+  @ApiProblemResponse(404, 'PAYMENT_NOT_FOUND')
+  async get(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+  ): Promise<PaymentResponseDto> {
+    return PaymentResponseDto.from(
+      await this.payments.view(await this.payments.getById(paymentId)),
+    );
+  }
 
   @Post(':paymentId/release')
   @HttpCode(HttpStatus.OK)

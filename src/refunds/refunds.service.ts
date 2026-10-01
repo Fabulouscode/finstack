@@ -37,6 +37,10 @@ import {
   RefundExceedsRemainingException,
   RefundNotFoundException,
 } from './refunds.errors';
+import { applyMoneyFilter } from '../common/pagination/money-filter';
+import { AdminMoneyFilter } from '../common/pagination/admin-list-query.dto';
+import { Cursor } from '../common/pagination/cursor';
+import { keysetPage, PageOptions } from '../common/pagination/keyset-page';
 
 const { Debit, Credit } = EntryDirection;
 
@@ -125,6 +129,24 @@ export class RefundsService {
     // Re-read after the status (see PaymentsService.view).
     const refund = await this.refunds.findOneByOrFail({ id: refundId });
     return { refund, transaction };
+  }
+
+  /** Every refund, newest first, for staff (admin lists). */
+  async search(
+    filter: AdminMoneyFilter,
+    page: PageOptions,
+  ): Promise<{ views: RefundView[]; next: Cursor | null }> {
+    const query = this.refunds.createQueryBuilder('refund');
+    applyMoneyFilter(query, 'refund', filter, this.transactions);
+    if (filter.paymentId) {
+      query.andWhere('refund.paymentId = :paymentId', {
+        paymentId: filter.paymentId,
+      });
+    }
+    const { items, next } = await keysetPage(query, 'refund', page);
+    const views: RefundView[] = [];
+    for (const refund of items) views.push(await this.view(refund.id));
+    return { views, next };
   }
 
   /** Refunds still processing, and since when (admin overview). */

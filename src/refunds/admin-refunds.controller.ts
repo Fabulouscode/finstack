@@ -8,19 +8,24 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
+import { IsOptional, IsUUID } from 'class-validator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { PlatformPermission } from '../auth/platform-permissions';
 import { toMinorUnits } from '../common/money/money';
+import { AdminMoneyListQueryDto } from '../common/pagination/admin-list-query.dto';
+import { encodeCursor } from '../common/pagination/cursor';
 import {
   ApiProblemResponse,
   ApiValidationProblemResponse,
@@ -28,8 +33,19 @@ import {
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
 import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
-import { CreateRefundRequestDto, RefundResponseDto } from './dto/refund.dto';
+import {
+  AdminRefundsPageDto,
+  CreateRefundRequestDto,
+  RefundResponseDto,
+} from './dto/refund.dto';
 import { RefundsService } from './refunds.service';
+
+class AdminRefundsQueryDto extends AdminMoneyListQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  paymentId?: string;
+}
 
 @ApiTags('Admin')
 @ApiBearerAuth(ACCESS_TOKEN_SCHEME)
@@ -79,7 +95,27 @@ export class AdminRefundsController {
     );
   }
 
+  @Get('refunds')
+  @RequirePermission(PlatformPermission.ReadRefunds)
+  @ApiOperation({
+    summary: 'List refunds',
+    description:
+      'Newest first. Filter by status, provider, currency or payment (`paymentId`).',
+  })
+  @ApiOkResponse({ type: AdminRefundsPageDto })
+  @ApiValidationProblemResponse()
+  async list(
+    @Query() query: AdminRefundsQueryDto,
+  ): Promise<AdminRefundsPageDto> {
+    const { views, next } = await this.refunds.search(query, query.page());
+    return {
+      data: views.map((view) => RefundResponseDto.from(view)),
+      nextCursor: next ? encodeCursor(next) : null,
+    };
+  }
+
   @Get('refunds/:refundId')
+  @RequirePermission(PlatformPermission.ReadRefunds)
   @ApiOperation({ summary: 'Get a refund' })
   @ApiOkResponse({ type: RefundResponseDto })
   @ApiProblemResponse(404, 'REFUND_NOT_FOUND')

@@ -214,3 +214,15 @@ export class PaymentResponseDto {
     };
   }
 }
+
+export class AdminPaymentsPageDto {
+  @ApiProperty({ type: [PaymentResponseDto] })
+  data: PaymentResponseDto[];
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Pass as `cursor` for the next page; null on the last page',
+  })
+  nextCursor: string | null;
+}

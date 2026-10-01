@@ -43,6 +43,10 @@ import {
   PayoutDestinationCoolingOffException,
   PayoutNotFoundException,
 } from './payouts.errors';
+import { applyMoneyFilter } from '../common/pagination/money-filter';
+import { AdminMoneyFilter } from '../common/pagination/admin-list-query.dto';
+import { Cursor } from '../common/pagination/cursor';
+import { keysetPage, PageOptions } from '../common/pagination/keyset-page';
 
 const { Debit, Credit } = EntryDirection;
 
@@ -181,6 +185,19 @@ export class PayoutsService {
       throw new PayoutNotFoundException();
     }
     return this.view(payout.id);
+  }
+
+  /** Every payout, newest first, for staff (admin lists). */
+  async search(
+    filter: AdminMoneyFilter,
+    page: PageOptions,
+  ): Promise<{ views: PayoutView[]; next: Cursor | null }> {
+    const query = this.payouts.createQueryBuilder('payout');
+    applyMoneyFilter(query, 'payout', filter, this.transactions);
+    const { items, next } = await keysetPage(query, 'payout', page);
+    const views: PayoutView[] = [];
+    for (const payout of items) views.push(await this.view(payout.id));
+    return { views, next };
   }
 
   async view(payoutId: string): Promise<PayoutView> {

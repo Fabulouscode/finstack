@@ -30,3 +30,8 @@ A single `admin` role gave every operator every power: the support agent answeri
 
 - Changing what a role can do is a code change (reviewed and versioned), not a database edit. Custom roles per deployment would store bundles in the database. That's deliberately not done yet: fixed roles are easier to reason about and audit.
 - Staff are also ordinary users. They can hold wallets and belong to organizations with their normal access.
+
+## Amendment (2026-10-01): reading payments and refunds
+
+`payments:read` and `refunds:read` were added and given to every staff role (through `support`), for the new admin lists (`GET /v1/admin/payments`, `/refunds`, `/payouts`) and for reading a single payment or refund. Before, payments and refunds were visible only with the `manage` permissions that finance holds. Support staff, who answer customers' "where is my money?", couldn't see them. Making a refund still needs `refunds:manage`.
+

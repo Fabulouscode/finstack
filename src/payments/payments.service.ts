@@ -37,6 +37,10 @@ import {
   PaymentNotFoundException,
   PaymentProviderUnavailableException,
 } from './payments.errors';
+import { applyMoneyFilter } from '../common/pagination/money-filter';
+import { AdminMoneyFilter } from '../common/pagination/admin-list-query.dto';
+import { Cursor } from '../common/pagination/cursor';
+import { keysetPage, PageOptions } from '../common/pagination/keyset-page';
 
 export interface InitializePaymentInput {
   /** Minor units of `currency`. */
@@ -201,6 +205,19 @@ export class PaymentsService {
       throw new PaymentNotFoundException();
     }
     return this.view(payment);
+  }
+
+  /** Every payment, newest first, for staff (admin lists). */
+  async searchForAdmin(
+    filter: AdminMoneyFilter,
+    page: PageOptions,
+  ): Promise<{ views: PaymentView[]; next: Cursor | null }> {
+    const query = this.payments.createQueryBuilder('payment');
+    applyMoneyFilter(query, 'payment', filter, this.transactions);
+    const { items, next } = await keysetPage(query, 'payment', page);
+    const views: PaymentView[] = [];
+    for (const payment of items) views.push(await this.view(payment));
+    return { views, next };
   }
 
   async getById(id: string, manager?: EntityManager): Promise<Payment> {
