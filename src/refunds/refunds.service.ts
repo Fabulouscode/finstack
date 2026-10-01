@@ -3,7 +3,12 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { AuditAction } from '../audit/audit-actions';
 import { AuditService } from '../audit/audit.service';
 import { randomBytes } from 'node:crypto';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import { isUniqueViolation } from '../database/postgres-errors';
 import { LedgerService } from '../ledger/ledger.service';
 import { EntryDirection } from '../ledger/ledger.types';
@@ -149,29 +154,39 @@ export class RefundsService {
    * Handles a refund webhook. The payload is never trusted: every matching
    * processing refund is re-checked with the provider.
    */
-  async syncFromWebhook(provider: string, reference: string): Promise<number> {
+  /**
+   * Re-checks the in-flight refunds a webhook points at. `already_final`
+   * means the refunds exist but were settled earlier (e.g. synchronously).
+   */
+  async syncFromWebhook(
+    provider: string,
+    reference: string,
+  ): Promise<'synced' | 'already_final' | 'not_found'> {
     // The reference is the refund's own, or the refunded payment's.
     const payment = await this.payments.findByTransactionReference(reference);
-    const candidates = await this.refunds
-      .createQueryBuilder('refund')
-      .where('refund.provider = :provider', { provider })
+    const matching = (): SelectQueryBuilder<Refund> =>
+      this.refunds
+        .createQueryBuilder('refund')
+        .where('refund.provider = :provider', { provider })
+        .andWhere(
+          payment
+            ? '(refund.reference = :reference OR refund.paymentId = :paymentId)'
+            : 'refund.reference = :reference',
+          { reference, paymentId: payment?.id },
+        );
+    const candidates = await matching()
       .andWhere(
         this.transactions.statusIn('refund.transaction_id', [
           TransactionStatus.Processing,
         ]),
-      )
-      .andWhere(
-        payment
-          ? '(refund.reference = :reference OR refund.paymentId = :paymentId)'
-          : 'refund.reference = :reference',
-        { reference, paymentId: payment?.id },
       )
       .getMany();
 
     for (const refund of candidates) {
       await this.submit(refund);
     }
-    return candidates.length;
+    if (candidates.length > 0) return 'synced';
+    return (await matching().getExists()) ? 'already_final' : 'not_found';
   }
 
   // ---- Step 1 -----------------------------------------------------------------

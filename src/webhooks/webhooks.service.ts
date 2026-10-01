@@ -174,20 +174,20 @@ export class WebhooksService {
       ) {
         // Re-checks matching refunds with the provider; the payload itself
         // is only a hint of which refunds to look at.
-        const synced = await this.refunds.syncFromWebhook(
+        const result = await this.refunds.syncFromWebhook(
           event.provider,
           event.providerReference,
         );
         const status =
-          synced > 0
+          result === 'synced'
             ? WebhookEventStatus.Processed
             : WebhookEventStatus.Ignored;
-        await this.finish(
-          event.id,
-          status,
-          attempts,
-          synced > 0 ? 'refunds_synced' : 'no_matching_refund',
-        );
+        const outcomes = {
+          synced: 'refunds_synced',
+          already_final: 'refund_already_final',
+          not_found: 'no_matching_refund',
+        } as const;
+        await this.finish(event.id, status, attempts, outcomes[result]);
         return counted(status);
       }
 

@@ -288,6 +288,32 @@ describe('Refunds (e2e)', () => {
     });
   });
 
+  it('acknowledges a late webhook for a refund that already settled', async () => {
+    // Like Stripe: the refund succeeds at once, then its webhooks arrive.
+    const payment = await paidPayment(5_000, 'USD');
+    const created = (await refund(payment.id, {}).expect(201))
+      .body as RefundResponseDto;
+    expect(created.status).toBe('successful');
+
+    await deliver(
+      mock.simulateRefundOutcome(
+        created.providerRefundReference ?? '',
+        'successful',
+      ),
+    ).expect(200);
+
+    await eventually(async () => {
+      const [event] = await dataSource.query<{ outcome: string }[]>(
+        "SELECT outcome FROM webhook_events WHERE provider_type = 'refund.processed'",
+      );
+      expect(event?.outcome).toBe('refund_already_final');
+    });
+    await expect(wallet()).resolves.toMatchObject({
+      available: 0,
+      reserved: 0,
+    });
+  });
+
   it('returns the funds when a pending refund fails at the provider', async () => {
     const payment = await paidPayment(5_000, 'USD');
     mock.setRefundBehaviour('pending');
