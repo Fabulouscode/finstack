@@ -62,8 +62,8 @@ Use this for Railway, Fly.io, AWS ECS, Google Cloud Run, a VPS, or Kubernetes.
 **2. Build and push the image.**
 
 ```bash
-docker build -t registry.example.com/finstack:0.1.1 .
-docker push registry.example.com/finstack:0.1.1
+docker build -t registry.example.com/finstack:0.2.0 .
+docker push registry.example.com/finstack:0.2.0
 ```
 
 **3. Set the configuration** from [Production configuration](#production-configuration), as environment variables or secrets in your platform.
@@ -71,14 +71,14 @@ docker push registry.example.com/finstack:0.1.1
 **4. Run migrations** as a one-off job with the same image and configuration:
 
 ```bash
-docker run --rm --env-file production.env registry.example.com/finstack:0.1.1 \
+docker run --rm --env-file production.env registry.example.com/finstack:0.2.0 \
   node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js
 ```
 
 **5. Start the app.**
 
 ```bash
-docker run -d --env-file production.env -p 3000:3000 registry.example.com/finstack:0.1.1
+docker run -d --env-file production.env -p 3000:3000 registry.example.com/finstack:0.2.0
 ```
 
 If your platform has no separate job step, start the container with `sh docker/start.sh` instead. It runs the migrations, then the app.

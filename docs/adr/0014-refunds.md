@@ -33,7 +33,7 @@ A refund sends money back to the customer's card or account through the provider
 - Refunds stuck `processing` (outage, lost webhook) need a retry. An automatic retry and reconciliation job belongs to the reconciliation module.
 - A product that wants to keep its FX margin on refunds changes one function (`reverseConversion`).
 
-## Amendment (2026-10-02): never sent twice
+## Amendment (2026-10-01): never sent twice
 
 The original decision assumed providers deduplicate refunds by our reference. Only Stripe does (through its `Idempotency-Key`, and only for 24 hours). Paystack and Flutterwave make a new refund on every call. If a refund request timed out after the provider had acted, a retry (admin retry or webhook) refunded the customer twice. The mock provider also deduplicated, so no test caught it.
 

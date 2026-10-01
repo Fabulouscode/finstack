@@ -4,6 +4,12 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-01
+
+A third payment provider, a way to deploy, and a refund fix that matters for anyone using Paystack or Flutterwave.
+
+**Upgrading:** run migrations (`RefundSubmissions` adds `refunds.submitted_at` and backfills it). If you wrote your own provider adapter, implement `findRefund` (see **Changed**).
+
 ### Added
 - Deployment guide (`docs/deployment.md`): any Docker host, production configuration, provider webhooks and a go-live checklist.
 - Render Blueprint (`render.yaml`) and a "Deploy to Render" button that creates a sandbox deployment.
@@ -13,7 +19,9 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 - **Refunds are never sent twice.** A Paystack or Flutterwave refund whose request timed out could be sent again by a retry, refunding the customer twice. FinStack now asks the provider before any resend, lets only one sender act at a time, and never releases a hold on an unclear answer. Existing refunds are backfilled by the migration. See the amendment to ADR 0014.
 
 ### Changed
+- **Breaking for custom provider adapters:** `PaymentProvider` requires `findRefund`, which returns the refund made with our reference, null only when the provider confirms there is none, and throws when it can't tell. The built-in adapters implement it.
 - Refund responses include `failureReason`, with the provider's own message, as payout responses already did.
+- The mock provider no longer deduplicates refunds (like Paystack and Flutterwave), and has `lost` and `unsure` refund modes for testing.
 
 ## [0.1.1] - 2026-10-01
 
@@ -59,5 +67,6 @@ The first release: a complete fintech backend foundation. Decisions are recorded
 - Sandbox deployments (`SANDBOX_MODE`) with an owner-checked simulation API and test bank accounts.
 - CI: format, lint, type-check, build, unit, integration and end-to-end tests, and a schema drift check.
 
+[0.2.0]: https://github.com/Fabulouscode/finstack/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Fabulouscode/finstack/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Fabulouscode/finstack/releases/tag/v0.1.0
