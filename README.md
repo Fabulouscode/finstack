@@ -564,6 +564,8 @@ See [ADR 0022](./docs/adr/0022-email-notifications.md).
 
 Platform admins (`role = admin`) can find accounts, see their money, and act. Every action requires a `reason` and is audited.
 
+**Dashboard:** [FinStack Admin](https://github.com/Fabulouscode/finstack-admin) is a separate Next.js app built on these endpoints, for support, risk and finance staff. It signs in with a secure session cookie that keeps FinStack's tokens out of the browser.
+
 | Endpoint | Description |
 | --- | --- |
 | `GET /v1/admin/overview` | Users and organizations by status, what's owed to wallet holders per currency, and what needs attention (stuck payouts/refunds, open reconciliation items, failed webhooks) |
