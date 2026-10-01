@@ -15,11 +15,10 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    # Migrations run before the app starts. On a paid plan, move the first
-    # half to `preDeployCommand` so a failed migration never takes traffic.
-    dockerCommand: >-
-      sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js
-      && exec node dist/main.js"
+    # Runs migrations, then the app (docker/start.sh). On a paid plan, use
+    # `preDeployCommand` for migrations instead, so a failed migration never
+    # takes traffic (see docs/deployment.md).
+    dockerCommand: sh docker/start.sh
     healthCheckPath: /health/ready
     envVars:
       - key: NODE_ENV

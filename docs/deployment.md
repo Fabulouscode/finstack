@@ -81,6 +81,8 @@ docker run --rm --env-file production.env registry.example.com/finstack:0.1.1 \
 docker run -d --env-file production.env -p 3000:3000 registry.example.com/finstack:0.1.1
 ```
 
+If your platform has no separate job step, start the container with `sh docker/start.sh` instead. It runs the migrations, then the app.
+
 **6. Point your load balancer's health checks** at:
 
 - `GET /health/live`: the process is up (use for restarts)
