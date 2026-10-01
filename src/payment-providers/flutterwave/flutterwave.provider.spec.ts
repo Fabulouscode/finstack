@@ -301,6 +301,52 @@ describe('FlutterwaveProvider', () => {
       ).toBe('payout.failed');
     });
 
+    // The older format, which accounts receive unless "v3 webhooks" is
+    // enabled. Shape taken from a real test-mode delivery.
+    const legacyCharge = {
+      id: 10525521,
+      txRef: 'trx_1',
+      flwRef: 'FLW-MOCK-1cdb675511c3c8aed2599c6855862485',
+      orderRef: 'URF_1790875018828_2160935',
+      amount: 1200.75,
+      charged_amount: 1200.75,
+      status: 'successful',
+      currency: 'NGN',
+      'event.type': 'CARD_TRANSACTION',
+      entity: { card6: '553188', card_last4: '2950' },
+    };
+
+    it('reads the older webhook format too', () => {
+      expect(parse(legacyCharge)).toEqual({
+        eventId: 'charge.completed:10525521:successful',
+        type: 'payment.succeeded',
+        providerType: 'CARD_TRANSACTION',
+        providerReference: 'trx_1',
+        reference: 'trx_1',
+      });
+      expect(parse({ ...legacyCharge, status: 'failed' }).type).toBe(
+        'payment.failed',
+      );
+      expect(
+        parse({
+          'event.type': 'Transfer',
+          transfer: { id: 33286, reference: 'pyt_1', status: 'FAILED' },
+        }),
+      ).toMatchObject({
+        eventId: 'transfer.completed:33286:FAILED',
+        type: 'payout.failed',
+        providerReference: 'pyt_1',
+      });
+    });
+
+    it('gives a charge the same event id in either format, so it is processed once', () => {
+      const v3 = parse({
+        event: 'charge.completed',
+        data: { id: 10525521, tx_ref: 'trx_1', status: 'successful' },
+      });
+      expect(parse(legacyCharge).eventId).toBe(v3.eventId);
+    });
+
     it('stores refund webhooks (no event name) as unhandled, with a stable id', () => {
       const refund = {
         id: 99025,

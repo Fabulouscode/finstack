@@ -155,6 +155,21 @@ describe('Flutterwave provider (e2e, fake Flutterwave API)', () => {
     ).toBe(true);
   });
 
+  it('credits from the older webhook format too', async () => {
+    const payment = (await startPayment(120_075).expect(201))
+      .body as PaymentResponseDto;
+    const { rawBody, hash } = flutterwave.complete(
+      payment.reference,
+      'successful',
+      { format: 'legacy' },
+    );
+    await deliver(rawBody, hash).expect(200);
+
+    await eventually(async () => {
+      expect((await balances()).available).toBe(120_075);
+    });
+  });
+
   it('rejects webhooks without the secret hash and stores nothing', async () => {
     const payment = (await startPayment(500_000).expect(201))
       .body as PaymentResponseDto;

@@ -79,12 +79,24 @@ export class FakeFlutterwave {
   complete(
     txRef: string,
     outcome: 'successful' | 'failed',
-    overrides: { amount?: number } = {},
+    overrides: { amount?: number; format?: 'v3' | 'legacy' } = {},
   ): { rawBody: Buffer; hash: string } {
     const transaction = this.transactions.get(txRef);
     if (!transaction) throw new Error(`Unknown fake tx_ref ${txRef}`);
     transaction.status = outcome;
     if (overrides.amount !== undefined) transaction.amount = overrides.amount;
+    if (overrides.format === 'legacy') {
+      // What accounts without "v3 webhooks" enabled receive.
+      return this.webhook({
+        id: transaction.id,
+        txRef: transaction.tx_ref,
+        flwRef: transaction.flw_ref,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        status: transaction.status,
+        'event.type': 'CARD_TRANSACTION',
+      });
+    }
     return this.webhook({ event: 'charge.completed', data: transaction });
   }
 

@@ -75,14 +75,71 @@ interface FlutterwaveRefund {
   status: string;
 }
 
+/**
+ * Both webhook formats Flutterwave sends: v3 (`event` plus `data`) and the
+ * older format accounts get unless "v3 webhooks" is enabled in the
+ * dashboard (top-level fields, `txRef`, `"event.type": "CARD_TRANSACTION"`).
+ */
 interface FlutterwaveWebhookBody {
   event?: string;
-  data?: {
-    id?: number | string;
-    tx_ref?: string;
-    reference?: string;
-    status?: string;
-  };
+  data?: WebhookRecord;
+  // Older format:
+  'event.type'?: string;
+  id?: number | string;
+  txRef?: string;
+  status?: string;
+  transfer?: WebhookRecord;
+}
+
+interface WebhookRecord {
+  id?: number | string;
+  tx_ref?: string;
+  reference?: string;
+  status?: string;
+}
+
+/** A webhook reduced to what FinStack acts on, whatever its format. */
+interface NormalisedWebhook {
+  kind: 'charge' | 'transfer';
+  id: string;
+  status: string;
+  /** Our reference: the payment's `tx_ref` or the payout's reference. */
+  reference: string | undefined;
+  providerType: string;
+}
+
+function normaliseWebhook(
+  body: FlutterwaveWebhookBody,
+): NormalisedWebhook | null {
+  const record = (
+    kind: 'charge' | 'transfer',
+    data: WebhookRecord,
+    providerType: string,
+  ): NormalisedWebhook => ({
+    kind,
+    id: String(data.id),
+    status: String(data.status ?? ''),
+    reference: kind === 'charge' ? data.tx_ref : data.reference,
+    providerType,
+  });
+  if (body.event === 'charge.completed') {
+    return record('charge', body.data ?? {}, body.event);
+  }
+  if (body.event === 'transfer.completed') {
+    return record('transfer', body.data ?? {}, body.event);
+  }
+  const legacyType = body['event.type'] ?? 'legacy';
+  if (typeof body.txRef === 'string') {
+    return record(
+      'charge',
+      { id: body.id, tx_ref: body.txRef, status: body.status },
+      legacyType,
+    );
+  }
+  if (body.transfer && typeof body.transfer.reference === 'string') {
+    return record('transfer', body.transfer, legacyType);
+  }
+  return null;
 }
 
 function isAlreadyAdded(error: unknown): boolean {
@@ -303,41 +360,42 @@ export class FlutterwaveProvider implements PaymentProvider {
 
   parseWebhookEvent(rawBody: Buffer): ProviderWebhookEvent {
     const body = JSON.parse(rawBody.toString('utf8')) as FlutterwaveWebhookBody;
-    const event = body.event ?? '';
-    const data = body.data ?? {};
-    const status = String(data.status ?? '');
+    const webhook = normaliseWebhook(body);
 
-    if (event === 'charge.completed') {
+    if (webhook) {
+      // The same id across formats, so a charge delivered in both formats is
+      // processed once; the status is part of it because a record can be
+      // reported again when its status changes.
+      const event =
+        webhook.kind === 'charge' ? 'charge.completed' : 'transfer.completed';
+      const failed =
+        webhook.kind === 'charge'
+          ? mapTransactionStatus(webhook.status) === 'failed'
+          : mapTransferStatus(webhook.status) === 'failed';
       return {
-        // A charge can be reported more than once as its status changes.
-        eventId: `${event}:${String(data.id)}:${status}`,
+        eventId: `${event}:${webhook.id}:${webhook.status}`,
         type:
-          mapTransactionStatus(status) === 'failed'
-            ? 'payment.failed'
-            : 'payment.succeeded',
-        providerType: event,
-        providerReference: data.tx_ref,
-        reference: data.tx_ref,
-      };
-    }
-    if (event === 'transfer.completed') {
-      const outcome = mapTransferStatus(status);
-      return {
-        eventId: `${event}:${String(data.id)}:${status}`,
-        type: outcome === 'failed' ? 'payout.failed' : 'payout.succeeded',
-        providerType: event,
-        providerReference: data.reference,
-        reference: data.reference,
+          webhook.kind === 'charge'
+            ? failed
+              ? 'payment.failed'
+              : 'payment.succeeded'
+            : failed
+              ? 'payout.failed'
+              : 'payout.succeeded',
+        providerType: webhook.providerType,
+        providerReference: webhook.reference,
+        reference: webhook.reference,
       };
     }
 
     // Everything else, including refund webhooks (which carry no event name
     // and none of our references): stored, then ignored as unhandled.
     // Refunds are confirmed by asking Flutterwave instead.
+    const event = body.event ?? body['event.type'] ?? 'unnamed';
     return {
-      eventId: `${event || 'unnamed'}:${createHash('sha256').update(rawBody).digest('hex')}`,
+      eventId: `${event}:${createHash('sha256').update(rawBody).digest('hex')}`,
       type: 'unknown',
-      providerType: event || 'unnamed',
+      providerType: event,
     };
   }
 

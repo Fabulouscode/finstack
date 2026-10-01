@@ -7,7 +7,7 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 ### Added
 - Deployment guide (`docs/deployment.md`): any Docker host, production configuration, provider webhooks and a go-live checklist.
 - Render Blueprint (`render.yaml`) and a "Deploy to Render" button that creates a sandbox deployment.
-- Flutterwave provider: hosted checkout, verified webhooks (`verif-hash`), refunds, payouts to Nigerian bank accounts through saved beneficiaries, and reconciliation of transactions and transfers. Amounts are converted exactly between FinStack's minor units and Flutterwave's major units. See ADR 0030.
+- Flutterwave provider: hosted checkout, verified webhooks (`verif-hash`, in both the v3 and the older default format), refunds, payouts to Nigerian bank accounts through saved beneficiaries, and reconciliation of transactions and transfers. Amounts are converted exactly between FinStack's minor units and Flutterwave's major units. See ADR 0030.
 
 ### Changed
 - Refund responses include `failureReason`, with the provider's own message, as payout responses already did.

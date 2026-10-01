@@ -33,7 +33,7 @@ The verified amount is Flutterwave's `amount` (what was asked for), not `charged
 ### Webhooks
 
 - `verif-hash` is compared with `FLUTTERWAVE_WEBHOOK_SECRET_HASH` in constant time. Both values are hashed to fixed-length SHA-256 digests first, so neither the secret nor its length leaks through timing.
-- `charge.completed` becomes a payment event and `transfer.completed` a payout event. As always, the payload only says **which** record to check. FinStack asks Flutterwave for the real state before moving money.
+- `charge.completed` becomes a payment event and `transfer.completed` a payout event. The older format accounts receive by default (top-level `txRef` and `"event.type"`, or a `transfer` object) is read too. As always, the payload only says **which** record to check. FinStack asks Flutterwave for the real state before moving money.
 - Event ids combine the event, Flutterwave's id and the status, because a transaction can be reported again when its status changes.
 - **Refund webhooks are stored but not acted on** (`unhandled_event_type`). They have no event name and reference only Flutterwave's ids. Refunds are confirmed by asking Flutterwave instead: at creation, and through the admin retry endpoint.
 
@@ -66,8 +66,8 @@ Transactions and transfers are listed by day. Flutterwave filters whole days in 
   - Account resolution and beneficiaries worked. **Saving the same account twice is refused** ("Beneficiary already added to your account"), so a customer who removed a bank account could not add it back. Fixed: the existing beneficiary is found and reused.
   - **Initialising the same `tx_ref` again returns a new checkout link**, not an error. This is safe: after a timeout, FinStack hands out only the link from its successful retry.
   - The transfer `reference` filter returned exactly the transfer. A transfer that failed at Flutterwave ("Insufficient funds in customer balance") was marked failed with that reason, and the hold was returned.
+  - **Webhooks arrive in an older format by default.** Unless "v3 webhooks" is enabled in the dashboard, a payment arrives as top-level fields (`txRef`, `"event.type": "CARD_TRANSACTION"`), not as `event: "charge.completed"` with `data`. FinStack first ignored it as unhandled (crediting nothing). It now reads both formats, and a charge gets the same event id in either, so it is processed once. The real payload, redelivered, credited exactly ₦1,200.75.
   - **Bank codes differ between providers** (OPay is `100004` on Flutterwave and `999992` on Paystack). A payout destination's `bankCode` must come from the chosen provider's bank list.
 - **Not yet confirmed:**
   - Refunds. Flutterwave's test environment answered every refund with "Some error occured" (or a 502), and nothing was refunded. FinStack failed the refunds cleanly and returned the funds. Whether the refund `amount` is in major units, as everywhere else in the API, still needs a successful refund.
-  - Webhooks. None were delivered during the test; the dashboard's webhook settings need checking.
 - **Known gap, shared with Paystack:** neither API takes an idempotency key for refunds. If a refund request times out, FinStack cannot tell whether it was received, and a later retry sends it again. Stripe is protected by its `Idempotency-Key` header. Closing this needs a lookup of existing refunds before a retry. It is tracked separately and applies to both adapters.
