@@ -2,6 +2,7 @@ import { paymentsConfigFixture } from '../../config/testing/payments-config.fixt
 import { FetchFn, JsonHttpClient } from '../http/json-http-client';
 import {
   PaymentProviderError,
+  PayoutRecipient,
   ProviderWebhookEvent,
 } from '../payment-provider';
 import {
@@ -358,6 +359,85 @@ describe('FlutterwaveProvider', () => {
           },
         ],
       ]);
+    });
+
+    const resolvedAda = ok({
+      account_number: '0690000034',
+      account_name: 'ADE BOND',
+    });
+    const alreadyAdded: [number, object] = [
+      400,
+      {
+        status: 'error',
+        message: 'Beneficiary already added to your account',
+        data: null,
+      },
+    ];
+    const addAda = (provider: FlutterwaveProvider): Promise<PayoutRecipient> =>
+      provider.payouts.createRecipient({
+        currency: 'NGN',
+        bankCode: '044',
+        accountNumber: '0690000034',
+      });
+
+    it('reuses the beneficiary Flutterwave already has for the account', async () => {
+      const { provider, calls } = providerWith(
+        resolvedAda,
+        alreadyAdded,
+        ok(
+          [
+            {
+              id: 1,
+              account_number: '0690000034',
+              bank_code: '058',
+              full_name: 'Same number, other bank',
+            },
+          ],
+          { page_info: { current_page: 1, total_pages: 2 } },
+        ),
+        ok(
+          [
+            {
+              id: 3644,
+              account_number: '0690000034',
+              bank_code: '044',
+              full_name: 'ADE BOND',
+              bank_name: 'ACCESS BANK NIGERIA',
+            },
+          ],
+          { page_info: { current_page: 2, total_pages: 2 } },
+        ),
+      );
+
+      await expect(addAda(provider)).resolves.toEqual({
+        recipientReference: '3644',
+        accountName: 'ADE BOND',
+        bankName: 'ACCESS BANK NIGERIA',
+      });
+      expect(calls.slice(2).map((c) => c.url)).toEqual([
+        'https://api.flutterwave.test/v3/beneficiaries?page=1',
+        'https://api.flutterwave.test/v3/beneficiaries?page=2',
+      ]);
+    });
+
+    it('reports the original error when the existing beneficiary cannot be found', async () => {
+      const { provider } = providerWith(
+        resolvedAda,
+        alreadyAdded,
+        ok([], { page_info: { current_page: 1, total_pages: 1 } }),
+      );
+      await expect(addAda(provider)).rejects.toThrow(
+        'Beneficiary already added',
+      );
+    });
+
+    it('does not look for an existing beneficiary on other errors', async () => {
+      const { provider, calls } = providerWith(resolvedAda, [
+        400,
+        { status: 'error', message: 'Invalid account', data: null },
+      ]);
+      await expect(addAda(provider)).rejects.toThrow('Invalid account');
+      expect(calls).toHaveLength(2);
     });
 
     it('refuses payout currencies other than NGN without calling Flutterwave', async () => {

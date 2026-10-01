@@ -62,6 +62,14 @@ interface FlutterwaveTransfer {
   created_at?: string;
 }
 
+interface FlutterwaveBeneficiary {
+  id: number;
+  account_number: string;
+  bank_code: string;
+  full_name: string;
+  bank_name?: string | null;
+}
+
 interface FlutterwaveRefund {
   id: number;
   status: string;
@@ -75,6 +83,14 @@ interface FlutterwaveWebhookBody {
     reference?: string;
     status?: string;
   };
+}
+
+function isAlreadyAdded(error: unknown): boolean {
+  return (
+    error instanceof PaymentProviderError &&
+    !error.retryable &&
+    /already added/i.test(error.message)
+  );
 }
 
 /** A day with more than this many pages is refused rather than cut short. */
@@ -343,21 +359,49 @@ export class FlutterwaveProvider implements PaymentProvider {
       '/accounts/resolve',
       { account_number: input.accountNumber, account_bank: input.bankCode },
     );
-    const { body } = await this.call<{
-      id: number;
-      full_name: string;
-      bank_name?: string | null;
-    }>('POST', '/beneficiaries', {
-      account_bank: input.bankCode,
-      account_number: input.accountNumber,
-      beneficiary_name: resolved.data.account_name,
-      currency: input.currency,
-    });
+    let beneficiary: FlutterwaveBeneficiary;
+    try {
+      ({
+        body: { data: beneficiary },
+      } = await this.call<FlutterwaveBeneficiary>('POST', '/beneficiaries', {
+        account_bank: input.bankCode,
+        account_number: input.accountNumber,
+        beneficiary_name: resolved.data.account_name,
+        currency: input.currency,
+      }));
+    } catch (error) {
+      // Saved before (e.g. removed and added again in FinStack): Flutterwave
+      // refuses a second copy, so reuse the one it has.
+      const existing = isAlreadyAdded(error)
+        ? await this.findBeneficiary(input.bankCode, input.accountNumber)
+        : null;
+      if (!existing) throw error;
+      beneficiary = existing;
+    }
     return {
-      recipientReference: String(body.data.id),
-      accountName: body.data.full_name || resolved.data.account_name,
-      bankName: body.data.bank_name ?? null,
+      recipientReference: String(beneficiary.id),
+      accountName: beneficiary.full_name || resolved.data.account_name,
+      bankName: beneficiary.bank_name ?? null,
     };
+  }
+
+  private async findBeneficiary(
+    bankCode: string,
+    accountNumber: string,
+  ): Promise<FlutterwaveBeneficiary | null> {
+    for (let page = 1; page <= LIST_MAX_PAGES; page++) {
+      const { body } = await this.call<FlutterwaveBeneficiary[]>(
+        'GET',
+        `/beneficiaries?page=${page}`,
+      );
+      const match = body.data.find(
+        (b) => b.bank_code === bankCode && b.account_number === accountNumber,
+      );
+      if (match) return match;
+      const totalPages = body.meta?.page_info?.total_pages ?? 1;
+      if (page >= totalPages || body.data.length === 0) break;
+    }
+    return null;
   }
 
   /** Our payout reference is the transfer `reference` (unique per transfer). */

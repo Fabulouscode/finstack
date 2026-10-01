@@ -59,9 +59,15 @@ Transactions and transfers are listed by day. Flutterwave filters whole days in 
 ## Consequences
 
 - Flutterwave is a configuration choice: `PAYMENT_PROVIDERS=flutterwave` plus three settings. Test keys are refused in production and live keys outside it, as for the other providers.
-- The adapter is built from Flutterwave's documentation and tested against a local fake of its API (`test/utils/fake-flutterwave.ts`). As with Paystack, where live testing found a status the documentation didn't mention, a few behaviours should be **confirmed against a real Flutterwave test account** before going live:
-  - that the refund `amount` is in major units, like the rest of the API (the documentation is ambiguous)
-  - what `POST /payments` does when the same `tx_ref` is initialised again after a timeout
-  - what `POST /beneficiaries` returns for an account that is already saved
-  - the transfer `reference` filter on `GET /transfers`
+- The adapter is built from Flutterwave's documentation and tested against a local fake of its API (`test/utils/fake-flutterwave.ts`).
+- **Tested against a real Flutterwave test account (2026-10-01):**
+  - A ₦2,500.50 card payment was credited as exactly `250050` kobo. Flutterwave reports the amount as the float `2500.5`, and the conversion was exact.
+  - Reconciliation against Flutterwave's transaction list found no issues.
+  - Account resolution and beneficiaries worked. **Saving the same account twice is refused** ("Beneficiary already added to your account"), so a customer who removed a bank account could not add it back. Fixed: the existing beneficiary is found and reused.
+  - **Initialising the same `tx_ref` again returns a new checkout link**, not an error. This is safe: after a timeout, FinStack hands out only the link from its successful retry.
+  - The transfer `reference` filter returned exactly the transfer. A transfer that failed at Flutterwave ("Insufficient funds in customer balance") was marked failed with that reason, and the hold was returned.
+  - **Bank codes differ between providers** (OPay is `100004` on Flutterwave and `999992` on Paystack). A payout destination's `bankCode` must come from the chosen provider's bank list.
+- **Not yet confirmed:**
+  - Refunds. Flutterwave's test environment answered every refund with "Some error occured" (or a 502), and nothing was refunded. FinStack failed the refunds cleanly and returned the funds. Whether the refund `amount` is in major units, as everywhere else in the API, still needs a successful refund.
+  - Webhooks. None were delivered during the test; the dashboard's webhook settings need checking.
 - **Known gap, shared with Paystack:** neither API takes an idempotency key for refunds. If a refund request times out, FinStack cannot tell whether it was received, and a later retry sends it again. Stripe is protected by its `Idempotency-Key` header. Closing this needs a lookup of existing refunds before a retry. It is tracked separately and applies to both adapters.

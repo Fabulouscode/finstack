@@ -9,6 +9,9 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 - Render Blueprint (`render.yaml`) and a "Deploy to Render" button that creates a sandbox deployment.
 - Flutterwave provider: hosted checkout, verified webhooks (`verif-hash`), refunds, payouts to Nigerian bank accounts through saved beneficiaries, and reconciliation of transactions and transfers. Amounts are converted exactly between FinStack's minor units and Flutterwave's major units. See ADR 0030.
 
+### Changed
+- Refund responses include `failureReason`, with the provider's own message, as payout responses already did.
+
 ## [0.1.1] - 2026-10-01
 
 Fixes found by testing FinStack end to end against real Paystack and Stripe test accounts: payments, webhooks, partial refunds, payouts and reconciliation.

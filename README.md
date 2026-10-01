@@ -471,7 +471,9 @@ curl -X POST localhost:3000/v1/payouts -H "Authorization: Bearer $TOKEN" \
   -d '{"destinationId": "<id>", "amount": 500000}'
 ```
 
-A payout is **never sent twice**. The provider is always asked about our reference before anything is sent again, and payouts stuck in `processing` are re-checked every few minutes. Payouts work with the mock and **Paystack Transfers** (NGN, GHS, ZAR). Stripe payouts would need Stripe Connect and aren't included. See [ADR 0018](./docs/adr/0018-payouts.md).
+A payout is **never sent twice**. The provider is always asked about our reference before anything is sent again, and payouts stuck in `processing` are re-checked every few minutes. Payouts work with the mock, **Paystack Transfers** (NGN, GHS, ZAR) and **Flutterwave Transfers** (NGN). Stripe payouts would need Stripe Connect and aren't included.
+
+**Bank codes belong to the provider.** The same bank can have different codes on different providers (OPay is `999992` on Paystack and `100004` on Flutterwave), so take `bankCode` from the bank list of the provider the destination is saved with. See [ADR 0018](./docs/adr/0018-payouts.md).
 
 ## Reconciliation
 

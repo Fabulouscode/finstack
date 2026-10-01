@@ -247,6 +247,8 @@ describe('Refunds (e2e)', () => {
     expect(created).toMatchObject({
       status: 'failed',
       failureCode: 'PROVIDER_REJECTED',
+      // The provider's own message, so an admin can see why.
+      failureReason: 'Refund declined (mock)',
     });
     await expect(wallet()).resolves.toMatchObject({
       available: 5_000,

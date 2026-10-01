@@ -250,6 +250,32 @@ describe('Flutterwave provider (e2e, fake Flutterwave API)', () => {
     });
   });
 
+  it('lets a customer remove a bank account and add it back', async () => {
+    const add = (): request.Test =>
+      authed('post', '/v1/payout-destinations').send({
+        currency: 'NGN',
+        bankCode: '044',
+        accountNumber: '0690000034',
+      });
+    const first = expectStatus(await add(), 201, 'add')
+      .body as PayoutDestinationResponseDto;
+    await request(app.getHttpServer())
+      .delete(`/v1/payout-destinations/${first.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(204);
+
+    // Flutterwave refuses a second beneficiary for the same account; the
+    // existing one is reused.
+    const again = expectStatus(await add(), 201, 'add again')
+      .body as PayoutDestinationResponseDto;
+    expect(again).toMatchObject({
+      provider: 'flutterwave',
+      accountName: 'ADA LOVELACE',
+      accountNumberLast4: '0034',
+    });
+    expect(flutterwave.beneficiaries).toHaveLength(1);
+  });
+
   it('pays out to a saved beneficiary and settles from the transfer webhook', async () => {
     await paid(500_000);
 

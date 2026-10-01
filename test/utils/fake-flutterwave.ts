@@ -40,6 +40,13 @@ export class FakeFlutterwave {
   readonly transactions = new Map<string, FakeTransaction>();
   readonly transfers: FakeTransfer[] = [];
   private readonly refunds = new Map<number, { id: number; status: string }>();
+  readonly beneficiaries: {
+    id: number;
+    account_number: string;
+    bank_code: string;
+    full_name: string;
+    bank_name: string;
+  }[] = [];
   private readonly server: Server;
   private nextId = 5000;
   private failures: number[] = [];
@@ -184,12 +191,34 @@ export class FakeFlutterwave {
     }
 
     if (method === 'POST' && path === '/beneficiaries') {
-      return ok(res, {
+      const accountNumber = String(body.account_number);
+      const bankCode = String(body.account_bank);
+      // Like the real API: one beneficiary per bank account.
+      if (
+        this.beneficiaries.some(
+          (b) => b.account_number === accountNumber && b.bank_code === bankCode,
+        )
+      ) {
+        return error(res, 'Beneficiary already added to your account');
+      }
+      const beneficiary = {
         id: this.nextId++,
-        account_number: String(body.account_number),
-        bank_code: String(body.account_bank),
+        account_number: accountNumber,
+        bank_code: bankCode,
         full_name: String(body.beneficiary_name),
         bank_name: 'ACCESS BANK NIGERIA',
+      };
+      this.beneficiaries.push(beneficiary);
+      return ok(res, beneficiary);
+    }
+
+    if (method === 'GET' && path === '/beneficiaries') {
+      return ok(res, this.beneficiaries, {
+        page_info: {
+          total: this.beneficiaries.length,
+          current_page: 1,
+          total_pages: 1,
+        },
       });
     }
 

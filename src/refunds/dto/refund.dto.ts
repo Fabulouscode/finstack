@@ -99,6 +99,13 @@ export class RefundResponseDto {
   @ApiProperty({ nullable: true, example: null })
   failureCode: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    example: null,
+    description: "Why it failed, including the provider's own message",
+  })
+  failureReason: string | null;
+
   @ApiProperty({ format: 'date-time' })
   createdAt: Date;
 
@@ -122,6 +129,7 @@ export class RefundResponseDto {
       providerRefundReference: refund.providerRefundReference,
       reason: refund.reason,
       failureCode: transaction.failureCode,
+      failureReason: transaction.failureReason,
       createdAt: refund.createdAt,
       completedAt: transaction.completedAt,
     };
