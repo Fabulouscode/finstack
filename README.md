@@ -568,6 +568,7 @@ Platform admins (`role = admin`) can find accounts, see their money, and act. Ev
 
 | Endpoint | Description |
 | --- | --- |
+| `GET /v1/admin/me` | Your platform role and permissions (any staff member), for deciding what a staff tool shows |
 | `GET /v1/admin/overview` | Users and organizations by status, what's owed to wallet holders per currency, and what needs attention (stuck payouts/refunds, open reconciliation items, failed webhooks) |
 | `GET /v1/admin/users?email=&status=`, `GET …/users/:id` | Search users; a user with their wallets and organizations |
 | `POST /v1/admin/users/:id/suspend` · `/reactivate` | Suspension takes effect immediately (even for issued tokens) and ends all sessions |

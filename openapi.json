@@ -8519,6 +8519,74 @@
         ]
       }
     },
+    "/v1/admin/me": {
+      "get": {
+        "description": "For staff tools deciding what to show. The role is read fresh on every request, so a change applies at once. Every endpoint still enforces its own permission.",
+        "operationId": "AdminMeController_me_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformRoleDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: not a staff member",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See the `Retry-After` header.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error. Quote `requestId` when reporting it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Your platform role and what it allows",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/v1/admin/roles": {
       "get": {
         "operationId": "AdminRolesController_list_v1",

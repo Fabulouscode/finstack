@@ -10,6 +10,7 @@ import { UsersModule } from '../users/users.module';
 import { WalletsModule } from '../wallets/wallets.module';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { AdminOrganizationsController } from './admin-organizations.controller';
+import { AdminMeController } from './admin-me.controller';
 import { AdminRolesController } from './admin-roles.controller';
 import { AdminOverviewController } from './admin-overview.controller';
 import { AdminUsersController } from './admin-users.controller';
@@ -35,6 +36,7 @@ import { AdminService } from './admin.service';
   ],
   controllers: [
     AdminOverviewController,
+    AdminMeController,
     AdminRolesController,
     AdminUsersController,
     AdminOrganizationsController,

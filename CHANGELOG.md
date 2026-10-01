@@ -8,6 +8,7 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 - The OpenAPI document described 61 nullable fields (for example `completedAt`, `failureCode`, `providerReference`) as objects, so generated clients had the wrong types. They now carry their real type, and a test fails if one is ever untyped again.
 
 ### Added
+- `GET /v1/admin/me`: the caller's platform role and permissions, so staff tools can show only the actions a person may take. Every endpoint still enforces its own permission.
 - Admin lists: `GET /v1/admin/payments` (and `/payments/:id`), `/refunds` and `/payouts`, newest first with cursor paging, filterable by status, provider, currency and owner (or payment, for refunds).
 - `payments:read` and `refunds:read` permissions, held by every staff role, so support can see payments and refunds without being able to move money.
 - `openapi.json`: the API's OpenAPI document, committed for clients to generate types from. `npm run openapi` regenerates it, and CI checks it matches the code.

@@ -168,6 +168,18 @@ describe('Platform roles (e2e)', () => {
     }
   });
 
+  it('tells each staff member their own permissions, and customers nothing', async () => {
+    const support = await staff('support-me@example.com', 'support');
+    const me = (
+      await as(support.tokens.accessToken, 'get', '/v1/admin/me').expect(200)
+    ).body as PlatformRoleDto;
+    expect(me.role).toBe('support');
+    expect(me.permissions).toContain('payments:read');
+    expect(me.permissions).not.toContain('refunds:manage');
+
+    await as(customer.tokens.accessToken, 'get', '/v1/admin/me').expect(403);
+  });
+
   describe('role management', () => {
     it('is admin-only, audited and immediate', async () => {
       const support = await staff('support@example.com', 'support');
