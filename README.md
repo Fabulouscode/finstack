@@ -394,6 +394,32 @@ Each simulation goes through the **real pipeline**: a signed webhook is received
 
 **Test bank accounts.** Payouts to account numbers ending in `0001` are rejected by the bank at once. Those ending in `0002` stay pending until you complete them with the simulation API. Any other account succeeds at once. See [ADR 0029](./docs/adr/0029-sandbox.md).
 
+### Real provider webhooks on your machine: `finstack listen`
+
+Providers can't reach `localhost`, so their webhooks never arrive while you develop. Instead of a tunnel, run the listener next to FinStack:
+
+```bash
+npm run build
+npm run listen                          # every enabled provider
+npm run listen -- --provider paystack   # just one
+```
+
+```
+Listening for paystack, flutterwave test events → http://localhost:3000/v1/webhooks/:provider
+19:42:07 → paystack charge.success trx_773260494aaf7b26832a  [200]
+19:43:15 → flutterwave transfer.completed pyt_9c29801ce59318bfec99  [200]
+```
+
+It reads your `.env`, asks each enabled provider's API every few seconds for payments and payouts that finished, and posts each one to FinStack as a webhook signed exactly as that provider signs them. There's no tunnel, public URL or dashboard setup.
+
+- **Stripe:** Stripe's real events (`GET /v1/events`), signed with your local `STRIPE_WEBHOOK_SECRET`. Any `whsec_…` value works locally, and no webhook endpoint needs to exist at Stripe.
+- **Paystack and Flutterwave** have no events API, so the listener builds their webhooks from the real transaction and transfer records. Refunds settle through FinStack's scheduled re-check instead.
+- **It's safe** because FinStack never trusts a webhook's contents: it re-checks each payment and payout with the provider before moving money.
+- **Test keys only.** Live keys are refused.
+- On start it only notes events that already exist, so nothing old is re-sent. `--replay` delivers recent ones too. See `--help` for every option, and [ADR 0031](./docs/adr/0031-finstack-listen.md).
+
+What it doesn't do is test each provider's exact webhook payloads. Paystack and Flutterwave payloads are rebuilt, not captured. Those formats are covered by tests built from real deliveries.
+
 ## Fees
 
 Operators set prices as **fee rules**, with no code changes. Each rule applies to an operation (`payment`, `payout` or `transfer`) in a currency, with optional per-organization rates:
@@ -686,7 +712,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 - [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe, later Flutterwave), currency routing (local → Paystack, international → Stripe, overridable), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
-- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint, Flutterwave): CLI, more providers, dashboard
+- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint, Flutterwave, `finstack listen`): more providers, dashboard
 
 ## Architecture decisions
 

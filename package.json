@@ -12,6 +12,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "listen": "node dist/cli/finstack.js listen",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
@@ -101,5 +102,8 @@
     "setupFiles": [
       "reflect-metadata"
     ]
+  },
+  "bin": {
+    "finstack": "dist/cli/finstack.js"
   }
 }

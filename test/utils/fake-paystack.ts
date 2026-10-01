@@ -13,6 +13,7 @@ interface FakeTransaction {
   amount: number;
   currency: string;
   status: 'ongoing' | 'success' | 'failed';
+  createdAt: string;
 }
 
 /**
@@ -116,6 +117,7 @@ export class FakePaystack {
         amount: Number(body.amount),
         currency: String(body.currency),
         status: 'ongoing' as const,
+        createdAt: new Date().toISOString(),
       };
       this.transactions.set(reference, transaction);
       return send(res, 200, {
@@ -126,6 +128,24 @@ export class FakePaystack {
           access_code: `ac_${transaction.id}`,
           reference,
         },
+      });
+    }
+
+    // Lists (what `finstack listen` polls), newest first like Paystack.
+    if (req.method === 'GET' && path.startsWith('/transaction?')) {
+      return send(res, 200, {
+        status: true,
+        message: 'Transactions retrieved',
+        data: [...this.transactions.values()].reverse(),
+        meta: { page: 1, pageCount: 1 },
+      });
+    }
+    if (req.method === 'GET' && path.startsWith('/transfer?')) {
+      return send(res, 200, {
+        status: true,
+        message: 'Transfers retrieved',
+        data: [],
+        meta: { page: 1, pageCount: 1 },
       });
     }
 

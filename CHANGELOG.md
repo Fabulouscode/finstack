@@ -5,6 +5,7 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 ## [Unreleased]
 
 ### Added
+- `finstack listen` (`npm run listen`): delivers test-mode Paystack, Stripe and Flutterwave events to a local FinStack as signed webhooks, by polling each provider's API. No tunnel, public URL or dashboard setup. Test keys only. See ADR 0031.
 - Refunds stuck in `processing` are re-checked every 5 minutes (`refunds-sync`), as payouts are, so they settle without a webhook or an admin retry. Each re-check follows the never-sent-twice rules.
 
 ## [0.2.0] - 2026-10-01
