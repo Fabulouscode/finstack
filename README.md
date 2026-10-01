@@ -353,6 +353,7 @@ curl -X POST localhost:3000/v1/sandbox/payments/<paymentId>/complete \
 | `mock` | all supported | `/v1/webhooks/mock` | Development only; refused in production |
 | `paystack` | NGN, USD, GHS, ZAR, KES | `/v1/webhooks/paystack` | Suggested for NGN, GHS, KES and ZAR. Set `PAYMENT_PROVIDERS=paystack` and `PAYSTACK_SECRET_KEY`. Configure the webhook URL in the Paystack dashboard. |
 | `stripe` | USD, EUR, GBP, JPY, NGN, KES, ZAR (check your account) | `/v1/webhooks/stripe` | Suggested for USD, EUR, GBP and JPY. Hosted Checkout Sessions. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL`. Subscribe the webhook endpoint to `checkout.session.*` events. |
+| `flutterwave` | NGN, USD, GHS, KES, ZAR, EUR, GBP (check your account) | `/v1/webhooks/flutterwave` | Used when your routes, your backend or the default pick it; never suggested over the others. Hosted checkout (Flutterwave Standard); payouts to Nigerian bank accounts. Set `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET_HASH` (the secret hash from the dashboard) and `FLUTTERWAVE_REDIRECT_URL`. See [ADR 0030](./docs/adr/0030-flutterwave.md). |
 
 **Which provider charges a payment.** Your backend can pass `provider`, but usually leaves it out and FinStack chooses. End customers never pick. The order is:
 
@@ -367,7 +368,7 @@ See [ADR 0025](./docs/adr/0025-currency-routing.md).
 
 A provider is one class implementing `PaymentProvider` (`src/payment-providers/payment-provider.ts`): initialise, verify, refund, verify the webhook signature, parse the event. See `src/payment-providers/paystack/` for a complete adapter. Provider errors are classified for you by `JsonHttpClient`: timeouts, 5xx and 429 are retryable (the payment stays `pending`), and other 4xx responses are rejections.
 
-The Paystack and Stripe adapters are tested against local fakes of each API (`test/utils/fake-paystack.ts`, `test/utils/fake-stripe.ts`). The fakes use the same endpoints, encodings, idempotency behaviour and webhook signature schemes. Stripe webhooks older than `STRIPE_WEBHOOK_TOLERANCE_SECONDS` are rejected even with a valid signature, which prevents replays.
+The Paystack, Stripe and Flutterwave adapters are tested against local fakes of each API (`test/utils/fake-paystack.ts`, `test/utils/fake-stripe.ts`, `test/utils/fake-flutterwave.ts`). The fakes use the same endpoints, encodings, idempotency behaviour and webhook signature schemes. Stripe webhooks older than `STRIPE_WEBHOOK_TOLERANCE_SECONDS` are rejected even with a valid signature, which prevents replays.
 
 ### Settlement holds
 
@@ -679,10 +680,10 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
   - [x] Transactions (state machine), idempotency keys, transfers
   - [x] Organizations, role-based permissions, API keys
   - [x] Organization-owned wallets, payments and transactions
-- [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe), currency routing (local → Paystack, international → Stripe, overridable), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
+- [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe, later Flutterwave), currency routing (local → Paystack, international → Stripe, overridable), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
-- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint): CLI, more providers, dashboard
+- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint, Flutterwave): CLI, more providers, dashboard
 
 ## Architecture decisions
 

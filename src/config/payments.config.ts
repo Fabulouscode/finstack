@@ -17,7 +17,12 @@ import { SUPPORTED_CURRENCIES } from '../common/money/currency';
 import { isSandboxMode } from './app.config';
 import { ConfigValidationError, validateConfig } from './validate-config';
 
-export const KNOWN_PAYMENT_PROVIDERS = ['mock', 'paystack', 'stripe'] as const;
+export const KNOWN_PAYMENT_PROVIDERS = [
+  'mock',
+  'paystack',
+  'stripe',
+  'flutterwave',
+] as const;
 export type PaymentProviderName = (typeof KNOWN_PAYMENT_PROVIDERS)[number];
 
 const toList = ({ value }: { value: unknown }): unknown =>
@@ -116,6 +121,45 @@ class PaymentsEnvironmentVariables {
     require_protocol: true,
   })
   STRIPE_CANCEL_URL?: string;
+
+  /** Flutterwave secret key: `FLWSECK_TEST-...-X` or `FLWSECK-...-X`. */
+  @IsOptional()
+  @Matches(/^FLWSECK(_TEST)?-[A-Za-z0-9]+(-[A-Za-z0-9]+)*-X$/, {
+    message:
+      'FLUTTERWAVE_SECRET_KEY must look like FLWSECK_TEST-...-X or FLWSECK-...-X',
+  })
+  FLUTTERWAVE_SECRET_KEY?: string;
+
+  /**
+   * The secret hash set in the Flutterwave dashboard (Settings > Webhooks).
+   * Flutterwave sends it back in the `verif-hash` header of every webhook.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  FLUTTERWAVE_WEBHOOK_SECRET_HASH?: string;
+
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  FLUTTERWAVE_BASE_URL: string = 'https://api.flutterwave.com/v3';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1_000)
+  @Max(60_000)
+  FLUTTERWAVE_TIMEOUT_MS: number = 10_000;
+
+  /** Where Flutterwave checkout returns the customer when no callbackUrl is given. */
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  FLUTTERWAVE_REDIRECT_URL?: string;
 
   /**
    * Currencies that must always use a specific provider, e.g.
@@ -230,6 +274,33 @@ export const paymentsConfig = registerAs('payments', () => {
       );
     }
   }
+  if (enabled.includes('flutterwave')) {
+    const key = env.FLUTTERWAVE_SECRET_KEY;
+    const testKey = key?.startsWith('FLWSECK_TEST-') ?? false;
+    if (!key) {
+      violations.push(
+        'FLUTTERWAVE_SECRET_KEY is required when Flutterwave is enabled',
+      );
+    } else if (live && testKey) {
+      violations.push(
+        'FLUTTERWAVE_SECRET_KEY: a test key must not be used in production',
+      );
+    } else if (!live && !testKey) {
+      violations.push(
+        'FLUTTERWAVE_SECRET_KEY: a live key may only be used in production, never in a sandbox',
+      );
+    }
+    if (!env.FLUTTERWAVE_WEBHOOK_SECRET_HASH) {
+      violations.push(
+        'FLUTTERWAVE_WEBHOOK_SECRET_HASH is required when Flutterwave is enabled',
+      );
+    }
+    if (!env.FLUTTERWAVE_REDIRECT_URL) {
+      violations.push(
+        'FLUTTERWAVE_REDIRECT_URL is required when Flutterwave is enabled',
+      );
+    }
+  }
   if (violations.length > 0) {
     throw new ConfigValidationError('payments', violations);
   }
@@ -253,6 +324,13 @@ export const paymentsConfig = registerAs('payments', () => {
       webhookToleranceSeconds: env.STRIPE_WEBHOOK_TOLERANCE_SECONDS,
       successUrl: env.STRIPE_SUCCESS_URL ?? '',
       cancelUrl: env.STRIPE_CANCEL_URL ?? '',
+    },
+    flutterwave: {
+      secretKey: env.FLUTTERWAVE_SECRET_KEY ?? '',
+      webhookSecretHash: env.FLUTTERWAVE_WEBHOOK_SECRET_HASH ?? '',
+      baseUrl: env.FLUTTERWAVE_BASE_URL.replace(/\/+$/, ''),
+      timeoutMs: env.FLUTTERWAVE_TIMEOUT_MS,
+      redirectUrl: env.FLUTTERWAVE_REDIRECT_URL ?? '',
     },
   };
 });

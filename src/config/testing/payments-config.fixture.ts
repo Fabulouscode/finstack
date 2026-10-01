@@ -24,6 +24,13 @@ export function paymentsConfigFixture(
       successUrl: 'https://app.example.com/paid',
       cancelUrl: 'https://app.example.com/cancelled',
     },
+    flutterwave: {
+      secretKey: '',
+      webhookSecretHash: '',
+      baseUrl: 'https://api.flutterwave.test/v3',
+      timeoutMs: 5_000,
+      redirectUrl: 'https://app.example.com/paid',
+    },
     ...overrides,
   };
 }

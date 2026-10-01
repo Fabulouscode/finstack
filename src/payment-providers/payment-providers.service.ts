@@ -3,6 +3,7 @@ import { AppException } from '../common/http/app.exception';
 import { paymentsConfig } from '../config/payments.config';
 import { ConfigValidationError } from '../config/validate-config';
 import type { PaymentsConfig } from '../config/payments.config';
+import { FlutterwaveProvider } from './flutterwave/flutterwave.provider';
 import { MockPaymentProvider } from './mock/mock-payment.provider';
 import { PaymentProvider, PayoutCapability } from './payment-provider';
 import { PaystackProvider } from './paystack/paystack.provider';
@@ -64,8 +65,9 @@ export class PaymentProvidersService {
     mock: MockPaymentProvider,
     paystack: PaystackProvider,
     stripe: StripeProvider,
+    flutterwave: FlutterwaveProvider,
   ) {
-    const available: PaymentProvider[] = [mock, paystack, stripe];
+    const available: PaymentProvider[] = [mock, paystack, stripe, flutterwave];
     this.providers = new Map(
       available
         .filter((provider) =>

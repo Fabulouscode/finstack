@@ -34,6 +34,13 @@ describe('paymentsConfig', () => {
         successUrl: '',
         cancelUrl: '',
       },
+      flutterwave: {
+        secretKey: '',
+        webhookSecretHash: '',
+        baseUrl: 'https://api.flutterwave.com/v3',
+        timeoutMs: 10_000,
+        redirectUrl: '',
+      },
     });
   });
 
@@ -135,6 +142,70 @@ describe('paymentsConfig', () => {
       expect(() => paymentsConfig()).toThrow(
         /live key may only be used in production/,
       );
+    });
+  });
+
+  describe('Flutterwave', () => {
+    const flutterwaveEnv = {
+      PAYMENT_PROVIDERS: 'flutterwave',
+      FLUTTERWAVE_SECRET_KEY: 'FLWSECK_TEST-abc123-X',
+      FLUTTERWAVE_WEBHOOK_SECRET_HASH: 'a-long-webhook-secret-hash',
+      FLUTTERWAVE_REDIRECT_URL: 'https://app.example.com/paid',
+    };
+
+    it('accepts a complete test configuration', () => {
+      Object.assign(process.env, flutterwaveEnv);
+
+      expect(paymentsConfig()).toMatchObject({
+        defaultProvider: 'flutterwave',
+        flutterwave: {
+          secretKey: 'FLWSECK_TEST-abc123-X',
+          webhookSecretHash: 'a-long-webhook-secret-hash',
+          baseUrl: 'https://api.flutterwave.com/v3',
+          redirectUrl: 'https://app.example.com/paid',
+        },
+      });
+    });
+
+    it.each([
+      'FLUTTERWAVE_SECRET_KEY',
+      'FLUTTERWAVE_WEBHOOK_SECRET_HASH',
+      'FLUTTERWAVE_REDIRECT_URL',
+    ])('requires %s', (name) => {
+      Object.assign(process.env, flutterwaveEnv);
+      delete process.env[name];
+
+      expect(() => paymentsConfig()).toThrow(ConfigValidationError);
+    });
+
+    it('refuses a live key outside production, and a test key in production', () => {
+      Object.assign(process.env, flutterwaveEnv, {
+        FLUTTERWAVE_SECRET_KEY: 'FLWSECK-abc123-X',
+      });
+      expect(() => paymentsConfig()).toThrow(
+        /live key may only be used in production/,
+      );
+
+      Object.assign(process.env, flutterwaveEnv, { NODE_ENV: 'production' });
+      expect(() => paymentsConfig()).toThrow(
+        /test key must not be used in production/,
+      );
+    });
+
+    it('accepts keys with an extra segment, as Flutterwave issues them', () => {
+      Object.assign(process.env, flutterwaveEnv, {
+        FLUTTERWAVE_SECRET_KEY:
+          'FLWSECK_TEST-00000000000000000000000000000000-abc123def456g-X',
+      });
+      expect(paymentsConfig().flutterwave.secretKey).toMatch(/^FLWSECK_TEST-/);
+    });
+
+    it('rejects a malformed key', () => {
+      Object.assign(process.env, flutterwaveEnv, {
+        FLUTTERWAVE_SECRET_KEY: 'sk_test_abc123',
+      });
+
+      expect(() => paymentsConfig()).toThrow(/FLWSECK_TEST-/);
     });
   });
 

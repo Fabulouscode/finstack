@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FlutterwaveProvider } from './flutterwave/flutterwave.provider';
 import { JsonHttpClient } from './http/json-http-client';
 import { MockPaymentProvider } from './mock/mock-payment.provider';
 import { PaymentProvidersService } from './payment-providers.service';
@@ -12,6 +13,7 @@ import { StripeProvider } from './stripe/stripe.provider';
     MockPaymentProvider,
     PaystackProvider,
     StripeProvider,
+    FlutterwaveProvider,
     PaymentProvidersService,
   ],
   exports: [PaymentProvidersService, MockPaymentProvider],

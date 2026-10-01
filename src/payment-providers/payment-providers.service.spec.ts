@@ -1,5 +1,6 @@
 import { paymentsConfigFixture } from '../config/testing/payments-config.fixture';
 import { ConfigValidationError } from '../config/validate-config';
+import { FlutterwaveProvider } from './flutterwave/flutterwave.provider';
 import { JsonHttpClient } from './http/json-http-client';
 import { MockPaymentProvider } from './mock/mock-payment.provider';
 import {
@@ -22,6 +23,7 @@ function service(
     new MockPaymentProvider(config),
     new PaystackProvider(config, http),
     new StripeProvider(config, http),
+    new FlutterwaveProvider(config, http),
   );
 }
 
@@ -122,6 +124,31 @@ describe('PaymentProvidersService provider preferences', () => {
     expect(() => paystackOnly.select('EUR')).toThrow(
       CurrencyNotSupportedByProviderException,
     );
+  });
+
+  it('uses Flutterwave when a business chooses it: by route, request or default', () => {
+    const all = both({
+      enabledProviders: ['paystack', 'stripe', 'flutterwave'],
+    });
+    // Never suggested over the built-in preferences...
+    expect(all.select('NGN').name).toBe('paystack');
+    // ...but used whenever the client or the operator picks it.
+    expect(all.select('NGN', 'flutterwave').name).toBe('flutterwave');
+    expect(
+      both({
+        enabledProviders: ['paystack', 'stripe', 'flutterwave'],
+        currencyRoutes: { KES: 'flutterwave' },
+      }).select('KES').name,
+    ).toBe('flutterwave');
+
+    const flutterwaveOnly = service({
+      enabledProviders: ['flutterwave'],
+      defaultProvider: 'flutterwave',
+      currencyRoutes: {},
+    });
+    expect(flutterwaveOnly.select('NGN').name).toBe('flutterwave');
+    expect(flutterwaveOnly.select('GBP').name).toBe('flutterwave');
+    expect(flutterwaveOnly.selectForPayout('NGN').name).toBe('flutterwave');
   });
 });
 

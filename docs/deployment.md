@@ -125,6 +125,7 @@ If your platform has no separate job step, start the container with `sh docker/s
 | `PAYSTACK_SECRET_KEY` | `sk_live_...` (live) or `sk_test_...` (sandbox) |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | From the Stripe dashboard (see [Provider webhooks](#provider-webhooks)) |
 | `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL` | Where Stripe Checkout returns the customer |
+| `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET_HASH`, `FLUTTERWAVE_REDIRECT_URL` | From the Flutterwave dashboard (see [Provider webhooks](#provider-webhooks)) |
 | `MOCK_PROVIDER_WEBHOOK_SECRET` | Sandbox only: signs simulated provider webhooks |
 
 ## Going live
@@ -166,6 +167,7 @@ Providers must reach FinStack over public HTTPS.
 |---|---|---|
 | Paystack | `https://<your-domain>/v1/webhooks/paystack` | Dashboard → Settings → API Keys & Webhooks. Paystack signs with your secret key; there is no separate webhook secret. For payouts, turn off transfer OTP (Settings → Preferences) and add a business phone number on the compliance page. |
 | Stripe | `https://<your-domain>/v1/webhooks/stripe` | Dashboard → Developers → Webhooks → Add endpoint. Copy the signing secret (`whsec_...`) into `STRIPE_WEBHOOK_SECRET`. |
+| Flutterwave | `https://<your-domain>/v1/webhooks/flutterwave` | Dashboard → Settings → Webhooks. Set a long random **secret hash** and put the same value in `FLUTTERWAVE_WEBHOOK_SECRET_HASH`; Flutterwave sends it in the `verif-hash` header. |
 
 Events to enable in Stripe:
 
