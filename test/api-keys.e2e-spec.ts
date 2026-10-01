@@ -103,7 +103,10 @@ describe('API keys (e2e)', () => {
       'SELECT key_hash FROM api_keys',
     );
     expect(row?.key_hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(row?.key_hash).not.toContain(created.key.split('_')[3]);
+    // The secret is base64url and may itself contain '_', so cut by prefix.
+    const secret = created.key.slice(created.prefix.length + 1);
+    expect(secret).toHaveLength(43);
+    expect(row?.key_hash).not.toContain(secret);
   });
 
   it('authenticates on allowed routes, within its organization and scopes', async () => {
