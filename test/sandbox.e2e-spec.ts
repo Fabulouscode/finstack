@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { CreatedApiKeyResponseDto } from '../src/api-keys/dto/api-key.dto';
 import { AuthResponseDto } from '../src/auth/dto/auth.dto';
 import { LedgerService } from '../src/ledger/ledger.service';
+import { MockPaymentProvider } from '../src/payment-providers/mock/mock-payment.provider';
 import { OrganizationResponseDto } from '../src/organizations/dto/organization.dto';
 import { PaymentResponseDto } from '../src/payments/dto/payment.dto';
 import {
@@ -178,6 +179,53 @@ describe('Sandbox (e2e)', () => {
         status: 'failed',
         failureCode: 'AMOUNT_MISMATCH',
       });
+    });
+
+    it('still completes payments and payouts after the mock provider restarts', async () => {
+      await asAda('post', '/v1/sandbox/wallets/fund')
+        .send({ amount: 20_000 })
+        .expect(201);
+      const payment = (
+        await asAda('post', '/v1/payments')
+          .set('Idempotency-Key', `restart-${++keys}`)
+          .send({ amount: 5_000, currency: 'USD' })
+          .expect(201)
+      ).body as PaymentResponseDto;
+      const destination = (
+        (
+          await asAda('post', '/v1/payout-destinations')
+            .send({
+              currency: 'USD',
+              bankCode: '058',
+              accountNumber: '1234560002',
+            })
+            .expect(201)
+        ).body as PayoutDestinationResponseDto
+      ).id;
+      const payout = (
+        await asAda('post', '/v1/payouts')
+          .set('Idempotency-Key', `restart-${++keys}`)
+          .send({ destinationId: destination, amount: 1_000 })
+          .expect(201)
+      ).body as PayoutResponseDto;
+      expect(payout.status).toBe('processing');
+
+      // A restart: the in-memory mock forgets everything; FinStack doesn't.
+      app.get(MockPaymentProvider).forgetEverything();
+
+      const paid = (
+        await asAda('post', `/v1/sandbox/payments/${payment.id}/complete`)
+          .send({ outcome: 'successful' })
+          .expect(200)
+      ).body as PaymentResponseDto;
+      expect(paid.status).toBe('successful');
+      const settled = (
+        await asAda('post', `/v1/sandbox/payouts/${payout.id}/complete`)
+          .send({ outcome: 'successful' })
+          .expect(200)
+      ).body as PayoutResponseDto;
+      expect(settled.status).toBe('successful');
+      expect(await available()).toBe(20_000 + 5_000 - 1_000);
     });
 
     it('drives payouts with test bank accounts', async () => {

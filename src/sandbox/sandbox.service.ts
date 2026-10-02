@@ -63,6 +63,14 @@ export class SandboxService {
         `The payment is already ${transaction.status}`,
       );
     }
+    // After a restart the mock has forgotten it; FinStack's record hasn't.
+    this.mock.rememberPayment({
+      reference: transaction.reference,
+      providerReference: payment.providerReference,
+      amount: payment.amount,
+      currency: payment.currency,
+      createdAt: payment.createdAt,
+    });
     const { rawBody, signature } = this.mock.simulateOutcome(
       payment.providerReference,
       outcome,
@@ -116,6 +124,16 @@ export class SandboxService {
       throw new NotSimulatableException(
         'Only payouts sent through the mock provider can be simulated',
       );
+    }
+    if (payout.providerReference) {
+      // Sent to the mock before a restart: re-register it from our record.
+      this.mock.rememberPayout({
+        reference: payout.reference,
+        providerReference: payout.providerReference,
+        amount: payout.amount,
+        currency: payout.currency,
+        createdAt: payout.createdAt,
+      });
     }
     let webhook: { rawBody: Buffer; signature: string };
     try {

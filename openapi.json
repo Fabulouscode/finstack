@@ -3648,14 +3648,6 @@
         "operationId": "TransactionsController_transfer_v1",
         "parameters": [
           {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "Idempotency-Key",
             "in": "header",
             "description": "Unique key per logical operation (e.g. a UUID). Retrying with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of repeating the operation. Keys expire after IDEMPOTENCY_KEY_TTL_HOURS.",
@@ -5525,14 +5517,6 @@
         "operationId": "PaymentsController_initialize_v1",
         "parameters": [
           {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "Idempotency-Key",
             "in": "header",
             "description": "Unique key per logical operation (e.g. a UUID). Retrying with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of repeating the operation. Keys expire after IDEMPOTENCY_KEY_TTL_HOURS.",
@@ -5828,14 +5812,6 @@
             "name": "organizationId",
             "required": true,
             "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -6192,14 +6168,6 @@
             "name": "paymentId",
             "required": true,
             "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -6890,14 +6858,6 @@
         "operationId": "PayoutsController_create_v1",
         "parameters": [
           {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "Idempotency-Key",
             "in": "header",
             "description": "Unique key per logical operation (e.g. a UUID). Retrying with the same key and body returns the original response (with `Idempotent-Replayed: true`) instead of repeating the operation. Keys expire after IDEMPOTENCY_KEY_TTL_HOURS.",
@@ -7381,14 +7341,6 @@
             "name": "organizationId",
             "required": true,
             "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
             "schema": {
               "type": "string"
             }

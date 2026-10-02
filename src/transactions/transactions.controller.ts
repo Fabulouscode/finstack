@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   Param,
   ParseUUIDPipe,
   Post,
@@ -25,7 +24,7 @@ import {
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
-import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
+import { IdempotencyKey } from '../idempotency/idempotency-key.decorator';
 import {
   CreateTransferRequestDto,
   ListTransactionsQueryDto,
@@ -62,7 +61,7 @@ export class TransactionsController {
   async transfer(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateTransferRequestDto,
-    @Headers(IDEMPOTENCY_KEY_HEADER.toLowerCase()) idempotencyKey: string,
+    @IdempotencyKey() idempotencyKey: string,
   ): Promise<TransactionResponseDto> {
     const transaction = await this.transfers.transfer(
       user.id,

@@ -294,6 +294,46 @@ export class MockPaymentProvider implements PaymentProvider {
 
   // ---- Simulation helpers (dev/test only) -------------------------------------
 
+  /**
+   * The mock keeps its state in memory, so a restart forgets every payment
+   * and payout. The sandbox re-registers one from FinStack's own record (the
+   * source of truth) before simulating it. A no-op when already known.
+   */
+  rememberPayment(payment: {
+    reference: string;
+    providerReference: string;
+    amount: bigint;
+    currency: string;
+    createdAt: Date;
+  }): void {
+    if (this.payments.has(payment.providerReference)) return;
+    this.payments.set(payment.providerReference, {
+      ...payment,
+      status: 'pending',
+    });
+  }
+
+  rememberPayout(payout: {
+    reference: string;
+    providerReference: string;
+    amount: bigint;
+    currency: string;
+    createdAt: Date;
+  }): void {
+    if (this.payoutsByReference.has(payout.reference)) return;
+    this.payoutsByReference.set(payout.reference, {
+      ...payout,
+      status: 'pending',
+    });
+  }
+
+  /** Forgets everything, as a restart does (tests). */
+  forgetEverything(): void {
+    this.payments.clear();
+    this.payoutsByReference.clear();
+    this.refunds.clear();
+  }
+
   /** Settles a mock payment as the customer paying (or failing to pay) would. */
   simulateOutcome(
     providerReference: string,

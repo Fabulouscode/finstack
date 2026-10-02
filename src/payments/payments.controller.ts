@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -25,7 +24,7 @@ import {
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
-import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
+import { IdempotencyKey } from '../idempotency/idempotency-key.decorator';
 import {
   InitializePaymentRequestDto,
   PaymentResponseDto,
@@ -66,7 +65,7 @@ export class PaymentsController {
   async initialize(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: InitializePaymentRequestDto,
-    @Headers(IDEMPOTENCY_KEY_HEADER.toLowerCase()) idempotencyKey: string,
+    @IdempotencyKey() idempotencyKey: string,
   ): Promise<PaymentResponseDto> {
     return PaymentResponseDto.from(
       await this.payments.initialize(

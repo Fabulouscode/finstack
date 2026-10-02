@@ -63,6 +63,28 @@ describe('Swagger (e2e)', () => {
       expect(untyped).toEqual([]);
     });
 
+    it('documents each header once per operation', () => {
+      // Header names are case-insensitive: two entries would make generated
+      // clients send the header twice, merged into one broken value.
+      const duplicated = Object.entries(document.paths).flatMap(
+        ([path, operations]) =>
+          Object.entries(
+            operations as Record<
+              string,
+              { parameters?: { in: string; name: string }[] }
+            >,
+          )
+            .filter(([, operation]) => {
+              const headers = (operation.parameters ?? [])
+                .filter((parameter) => parameter.in === 'header')
+                .map((parameter) => parameter.name.toLowerCase());
+              return new Set(headers).size !== headers.length;
+            })
+            .map(([method]) => `${method.toUpperCase()} ${path}`),
+      );
+      expect(duplicated).toEqual([]);
+    });
+
     it('documents the health endpoints with their responses', () => {
       const ready = document.paths['/health/ready']?.get;
 

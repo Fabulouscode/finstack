@@ -5,6 +5,8 @@ All notable changes to FinStack. The format follows [Keep a Changelog](https://k
 ## [Unreleased]
 
 ### Fixed
+- **Sandbox payments and payouts couldn't be completed after a restart** (500 Internal Server Error, or a misleading "the provider never received this payout"). The mock provider keeps its state in memory; the sandbox now re-registers a payment or payout from FinStack's own record before simulating it.
+- The OpenAPI document listed the `Idempotency-Key` header twice on the six endpoints that take it. Generated clients would send it twice, merged into one broken value. A new `@IdempotencyKey()` parameter decorator reads it without documenting it again, and a test fails if any header is ever listed twice.
 - The OpenAPI document described 61 nullable fields (for example `completedAt`, `failureCode`, `providerReference`) as objects, so generated clients had the wrong types. They now carry their real type, and a test fails if one is ever untyped again.
 
 ### Added

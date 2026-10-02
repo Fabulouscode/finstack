@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -27,7 +26,7 @@ import {
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
-import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
+import { IdempotencyKey } from '../idempotency/idempotency-key.decorator';
 import {
   CreatePayoutDestinationRequestDto,
   CreatePayoutRequestDto,
@@ -112,7 +111,7 @@ export class PayoutsController {
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreatePayoutRequestDto,
-    @Headers(IDEMPOTENCY_KEY_HEADER.toLowerCase()) idempotencyKey: string,
+    @IdempotencyKey() idempotencyKey: string,
   ): Promise<PayoutResponseDto> {
     return PayoutResponseDto.from(
       await this.payouts.request(

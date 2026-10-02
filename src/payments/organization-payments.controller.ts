@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -27,7 +26,7 @@ import {
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME, API_KEY_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
-import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
+import { IdempotencyKey } from '../idempotency/idempotency-key.decorator';
 import { RequireOrgPermission } from '../organizations/guards/organization-access';
 import { OrganizationAccessGuard } from '../organizations/guards/organization-access.guard';
 import { OrgPermission } from '../organizations/organization-permissions';
@@ -80,7 +79,7 @@ export class OrganizationPaymentsController {
   async initialize(
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
     @Body() body: InitializeOrganizationPaymentRequestDto,
-    @Headers(IDEMPOTENCY_KEY_HEADER.toLowerCase()) idempotencyKey: string,
+    @IdempotencyKey() idempotencyKey: string,
   ): Promise<PaymentResponseDto> {
     return PaymentResponseDto.from(
       await this.payments.initialize(

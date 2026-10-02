@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -32,7 +31,7 @@ import {
 } from '../docs/api-problem-response.decorator';
 import { ACCESS_TOKEN_SCHEME } from '../docs/swagger';
 import { Idempotent } from '../idempotency/idempotent.decorator';
-import { IDEMPOTENCY_KEY_HEADER } from '../idempotency/idempotency.interceptor';
+import { IdempotencyKey } from '../idempotency/idempotency-key.decorator';
 import {
   AdminRefundsPageDto,
   CreateRefundRequestDto,
@@ -79,7 +78,7 @@ export class AdminRefundsController {
     @CurrentUser() admin: AuthenticatedUser,
     @Param('paymentId', ParseUUIDPipe) paymentId: string,
     @Body() body: CreateRefundRequestDto,
-    @Headers(IDEMPOTENCY_KEY_HEADER.toLowerCase()) idempotencyKey: string,
+    @IdempotencyKey() idempotencyKey: string,
   ): Promise<RefundResponseDto> {
     return RefundResponseDto.from(
       await this.refunds.request(
