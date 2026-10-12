@@ -41,6 +41,16 @@ describe('paymentsConfig', () => {
         timeoutMs: 10_000,
         redirectUrl: '',
       },
+      paypal: {
+        clientId: '',
+        clientSecret: '',
+        webhookId: '',
+        baseUrl: 'https://api-m.sandbox.paypal.com',
+        timeoutMs: 10_000,
+        webhookToleranceSeconds: 300,
+        returnUrl: '',
+        cancelUrl: '',
+      },
     });
   });
 
@@ -206,6 +216,48 @@ describe('paymentsConfig', () => {
       });
 
       expect(() => paymentsConfig()).toThrow(/FLWSECK_TEST-/);
+    });
+  });
+
+  describe('PayPal', () => {
+    const paypalEnv = {
+      PAYMENT_PROVIDERS: 'paypal',
+      PAYPAL_CLIENT_ID: 'client-id',
+      PAYPAL_CLIENT_SECRET: 'client-secret',
+      PAYPAL_WEBHOOK_ID: 'WH-1',
+      PAYPAL_RETURN_URL: 'https://app.example.com/paid',
+      PAYPAL_CANCEL_URL: 'https://app.example.com/cancelled',
+    };
+
+    it('reads its settings, defaulting to the sandbox API', () => {
+      Object.assign(process.env, paypalEnv);
+      expect(paymentsConfig().paypal).toMatchObject({
+        clientId: 'client-id',
+        webhookId: 'WH-1',
+        baseUrl: 'https://api-m.sandbox.paypal.com',
+      });
+    });
+
+    it('requires credentials, a webhook id and return URLs when enabled', () => {
+      process.env.PAYMENT_PROVIDERS = 'paypal';
+      expect(() => paymentsConfig()).toThrow(
+        /PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are required/,
+      );
+      expect(() => paymentsConfig()).toThrow(/PAYPAL_WEBHOOK_ID is required/);
+    });
+
+    it('refuses the live API outside production', () => {
+      Object.assign(process.env, paypalEnv, {
+        PAYPAL_BASE_URL: 'https://api-m.paypal.com',
+      });
+      expect(() => paymentsConfig()).toThrow(/never in a sandbox/);
+    });
+
+    it('refuses the sandbox API in production', () => {
+      Object.assign(process.env, paypalEnv, { NODE_ENV: 'production' });
+      expect(() => paymentsConfig()).toThrow(
+        /sandbox API must not be used in production/,
+      );
     });
   });
 

@@ -11,6 +11,7 @@ import {
   UnknownPaymentProviderException,
 } from './payment-providers.service';
 import { PaystackProvider } from './paystack/paystack.provider';
+import { PayPalProvider } from './paypal/paypal.provider';
 import { StripeProvider } from './stripe/stripe.provider';
 
 function service(
@@ -24,6 +25,7 @@ function service(
     new PaystackProvider(config, http),
     new StripeProvider(config, http),
     new FlutterwaveProvider(config, http),
+    new PayPalProvider(config, http),
   );
 }
 

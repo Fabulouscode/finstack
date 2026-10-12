@@ -53,6 +53,8 @@ export interface RefundPaymentResult {
 }
 
 export type ProviderEventType =
+  /** The buyer approved; the payment still has to be captured (PayPal). */
+  | 'payment.approved'
   | 'payment.succeeded'
   | 'payment.failed'
   | 'refund.succeeded'
@@ -206,11 +208,14 @@ export interface PaymentProvider {
    */
   findRefund(input: FindRefundInput): Promise<RefundPaymentResult | null>;
 
-  /** Checks the webhook signature against the exact raw request body. */
+  /**
+   * Checks the webhook signature against the exact raw request body. Async
+   * where the provider's signing certificate has to be fetched (PayPal).
+   */
   verifyWebhookSignature(
     rawBody: Buffer,
     headers: IncomingHttpHeaders,
-  ): boolean;
+  ): boolean | Promise<boolean>;
 
   /** Parses an already-verified webhook body. */
   parseWebhookEvent(rawBody: Buffer): ProviderWebhookEvent;

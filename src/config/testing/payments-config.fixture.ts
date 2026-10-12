@@ -31,6 +31,16 @@ export function paymentsConfigFixture(
       timeoutMs: 5_000,
       redirectUrl: 'https://app.example.com/paid',
     },
+    paypal: {
+      clientId: '',
+      clientSecret: '',
+      webhookId: '',
+      baseUrl: 'https://api-m.sandbox.paypal.test',
+      timeoutMs: 5_000,
+      webhookToleranceSeconds: 300,
+      returnUrl: 'https://app.example.com/paid',
+      cancelUrl: 'https://app.example.com/cancelled',
+    },
     ...overrides,
   };
 }

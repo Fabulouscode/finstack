@@ -22,6 +22,7 @@ export const KNOWN_PAYMENT_PROVIDERS = [
   'paystack',
   'stripe',
   'flutterwave',
+  'paypal',
 ] as const;
 export type PaymentProviderName = (typeof KNOWN_PAYMENT_PROVIDERS)[number];
 
@@ -160,6 +161,58 @@ class PaymentsEnvironmentVariables {
     require_protocol: true,
   })
   FLUTTERWAVE_REDIRECT_URL?: string;
+
+  /** Client ID of a PayPal REST app (Developer Dashboard > Apps & Credentials). */
+  @IsOptional()
+  @IsString()
+  PAYPAL_CLIENT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYPAL_CLIENT_SECRET?: string;
+
+  /** The webhook's id in the app's settings; webhook signatures are bound to it. */
+  @IsOptional()
+  @IsString()
+  PAYPAL_WEBHOOK_ID?: string;
+
+  /** https://api-m.sandbox.paypal.com (sandbox) or https://api-m.paypal.com (live). */
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  PAYPAL_BASE_URL: string = 'https://api-m.sandbox.paypal.com';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1_000)
+  @Max(60_000)
+  PAYPAL_TIMEOUT_MS: number = 10_000;
+
+  /** Webhooks sent longer ago than this are rejected (replay protection). */
+  @Type(() => Number)
+  @IsInt()
+  @Min(30)
+  @Max(3_600)
+  PAYPAL_WEBHOOK_TOLERANCE_SECONDS: number = 300;
+
+  /** Where PayPal returns the buyer after approving, when no callbackUrl is given. */
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  PAYPAL_RETURN_URL?: string;
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    protocols: ['https', 'http'],
+    require_protocol: true,
+  })
+  PAYPAL_CANCEL_URL?: string;
 
   /**
    * Currencies that must always use a specific provider, e.g.
@@ -301,6 +354,34 @@ export const paymentsConfig = registerAs('payments', () => {
       );
     }
   }
+  if (enabled.includes('paypal')) {
+    if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_CLIENT_SECRET) {
+      violations.push(
+        'PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are required when PayPal is enabled',
+      );
+    }
+    if (!env.PAYPAL_WEBHOOK_ID) {
+      violations.push('PAYPAL_WEBHOOK_ID is required when PayPal is enabled');
+    }
+    if (!env.PAYPAL_RETURN_URL || !env.PAYPAL_CANCEL_URL) {
+      violations.push(
+        'PAYPAL_RETURN_URL and PAYPAL_CANCEL_URL are required when PayPal is enabled',
+      );
+    }
+    // PayPal keys don't say whether they're live; the API host does.
+    const sandboxHost = new URL(env.PAYPAL_BASE_URL).hostname.includes(
+      'sandbox',
+    );
+    if (live && sandboxHost) {
+      violations.push(
+        'PAYPAL_BASE_URL: the sandbox API must not be used in production',
+      );
+    } else if (!live && !sandboxHost) {
+      violations.push(
+        'PAYPAL_BASE_URL: the live API may only be used in production, never in a sandbox',
+      );
+    }
+  }
   if (violations.length > 0) {
     throw new ConfigValidationError('payments', violations);
   }
@@ -331,6 +412,16 @@ export const paymentsConfig = registerAs('payments', () => {
       baseUrl: env.FLUTTERWAVE_BASE_URL.replace(/\/+$/, ''),
       timeoutMs: env.FLUTTERWAVE_TIMEOUT_MS,
       redirectUrl: env.FLUTTERWAVE_REDIRECT_URL ?? '',
+    },
+    paypal: {
+      clientId: env.PAYPAL_CLIENT_ID ?? '',
+      clientSecret: env.PAYPAL_CLIENT_SECRET ?? '',
+      webhookId: env.PAYPAL_WEBHOOK_ID ?? '',
+      baseUrl: env.PAYPAL_BASE_URL.replace(/\/+$/, ''),
+      timeoutMs: env.PAYPAL_TIMEOUT_MS,
+      webhookToleranceSeconds: env.PAYPAL_WEBHOOK_TOLERANCE_SECONDS,
+      returnUrl: env.PAYPAL_RETURN_URL ?? '',
+      cancelUrl: env.PAYPAL_CANCEL_URL ?? '',
     },
   };
 });

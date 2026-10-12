@@ -95,7 +95,10 @@ export class WebhooksService {
     headers: IncomingHttpHeaders,
   ): Promise<ReceiveResult> {
     const provider = this.providers.get(providerName);
-    if (!rawBody || !provider.verifyWebhookSignature(rawBody, headers)) {
+    if (
+      !rawBody ||
+      !(await provider.verifyWebhookSignature(rawBody, headers))
+    ) {
       this.logger.warn(
         `Rejected ${providerName} webhook with an invalid signature`,
       );

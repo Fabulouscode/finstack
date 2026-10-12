@@ -74,7 +74,11 @@ function received(
 ): { verified: boolean; event: ProviderWebhookEvent } {
   const rawBody = Buffer.from(delivery.body);
   return {
-    verified: adapter.verifyWebhookSignature(rawBody, delivery.headers),
+    // These adapters verify synchronously; only PayPal's check is async.
+    verified: adapter.verifyWebhookSignature(
+      rawBody,
+      delivery.headers,
+    ) as boolean,
     event: adapter.parseWebhookEvent(rawBody),
   };
 }
