@@ -475,7 +475,7 @@ describe('Payments: first vertical slice (e2e)', () => {
         { amount: '100', currency: 'USD' },
         { amount: 0, currency: 'USD' },
         { amount: 100, currency: 'XXX' },
-        { amount: 100, currency: 'USD', provider: 'paypal' },
+        { amount: 100, currency: 'USD', provider: 'not-a-provider' },
       ]) {
         await authed('post', '/v1/payments')
           .set('Idempotency-Key', 'v')

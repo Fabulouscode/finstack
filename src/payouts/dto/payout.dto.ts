@@ -6,11 +6,13 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  IsEmail,
   IsUUID,
   Matches,
   Max,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../../common/money/currency';
 import type { CurrencyCode } from '../../common/money/currency';
@@ -18,7 +20,8 @@ import { MAX_API_AMOUNT, toApiAmount } from '../../common/money/money';
 import { FeeDto } from '../../fees/dto/fee.dto';
 import { KNOWN_PAYMENT_PROVIDERS } from '../../config/payments.config';
 import { TransactionStatus } from '../../transactions/transaction.types';
-import { PayoutDestination } from '../payout-destination.entity';
+import { PayoutDestination, maskEmail } from '../payout-destination.entity';
+import type { PayoutDestinationKind } from '../payout-destination.entity';
 import { PayoutView } from '../payouts.service';
 
 const trim = ({ value }: { value: unknown }): unknown =>
@@ -29,18 +32,43 @@ export class CreatePayoutDestinationRequestDto {
   @IsIn(SUPPORTED_CURRENCIES)
   currency: CurrencyCode;
 
-  @ApiProperty({ description: "The provider's bank code", example: '058' })
+  @ApiPropertyOptional({
+    enum: ['bank', 'paypal'],
+    default: 'bank',
+    description: 'A bank account, or a PayPal account paid by email',
+  })
+  @IsOptional()
+  @IsIn(['bank', 'paypal'])
+  kind?: PayoutDestinationKind;
+
+  @ApiPropertyOptional({
+    description: "Bank destinations: the provider's bank code",
+    example: '058',
+  })
+  @ValidateIf((dto: CreatePayoutDestinationRequestDto) => dto.kind !== 'paypal')
   @Transform(trim)
   @Matches(/^[0-9A-Za-z-]{2,20}$/)
-  bankCode: string;
+  bankCode?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '0123456789',
-    description: 'Sent to the provider; only the last 4 digits are stored',
+    description:
+      'Bank destinations: sent to the provider; only the last 4 digits are stored',
   })
+  @ValidateIf((dto: CreatePayoutDestinationRequestDto) => dto.kind !== 'paypal')
   @Transform(trim)
   @Matches(/^[0-9]{6,20}$/)
-  accountNumber: string;
+  accountNumber?: string;
+
+  @ApiPropertyOptional({
+    description: 'PayPal destinations: the PayPal account email',
+    example: 'ada@example.com',
+  })
+  @ValidateIf((dto: CreatePayoutDestinationRequestDto) => dto.kind === 'paypal')
+  @Transform(trim)
+  @IsEmail()
+  @MaxLength(254)
+  email?: string;
 
   @ApiPropertyOptional({
     description:
@@ -77,8 +105,11 @@ export class PayoutDestinationResponseDto {
   @ApiProperty({ example: 'NGN' })
   currency: string;
 
-  @ApiProperty({ example: '058' })
-  bankCode: string;
+  @ApiProperty({ enum: ['bank', 'paypal'] })
+  kind: PayoutDestinationKind;
+
+  @ApiProperty({ type: String, nullable: true, example: '058' })
+  bankCode: string | null;
 
   @ApiProperty({ type: String, nullable: true, example: 'Guaranty Trust Bank' })
   bankName: string | null;
@@ -86,8 +117,16 @@ export class PayoutDestinationResponseDto {
   @ApiProperty({ example: 'ADA LOVELACE' })
   accountName: string;
 
-  @ApiProperty({ example: '6789' })
-  accountNumberLast4: string;
+  @ApiProperty({ type: String, nullable: true, example: '6789' })
+  accountNumberLast4: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'a***@example.com',
+    description: 'PayPal destinations: the email, masked',
+  })
+  email: string | null;
 
   @ApiProperty({ type: String, nullable: true, example: 'Main account' })
   label: string | null;
@@ -107,10 +146,12 @@ export class PayoutDestinationResponseDto {
       id: destination.id,
       provider: destination.provider,
       currency: destination.currency,
+      kind: destination.kind,
       bankCode: destination.bankCode,
       bankName: destination.bankName,
       accountName: destination.accountName,
       accountNumberLast4: destination.accountNumberLast4,
+      email: destination.email ? maskEmail(destination.email) : null,
       label: destination.label,
       payoutsAvailableAt: destination.payoutsAvailableAt,
       createdAt: destination.createdAt,

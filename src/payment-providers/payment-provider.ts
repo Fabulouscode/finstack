@@ -74,6 +74,13 @@ export interface CreatePayoutRecipientInput {
   accountName?: string;
 }
 
+/** A recipient paid by email address, e.g. a PayPal account. */
+export interface CreateEmailRecipientInput {
+  currency: string;
+  email: string;
+  name?: string;
+}
+
 export interface PayoutRecipient {
   /** The provider's id for the saved bank account (e.g. a recipient code). */
   recipientReference: string;
@@ -109,13 +116,21 @@ export interface PayoutCapability {
 
   createRecipient(input: CreatePayoutRecipientInput): Promise<PayoutRecipient>;
 
+  /** Present when the provider pays to an email address instead of a bank. */
+  createEmailRecipient?(
+    input: CreateEmailRecipientInput,
+  ): Promise<PayoutRecipient>;
+
   initiate(input: InitiatePayoutInput): Promise<PayoutResult>;
 
   /**
    * The payout with OUR reference, or null if the provider never received
    * it. Checked before (re)sending, so a lost response can't pay twice.
    */
-  find(reference: string): Promise<PayoutResult | null>;
+  find(
+    reference: string,
+    providerReference?: string | null,
+  ): Promise<PayoutResult | null>;
 }
 
 /** A provider webhook normalised into FinStack's vocabulary. */

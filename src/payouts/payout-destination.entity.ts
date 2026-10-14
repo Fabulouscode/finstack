@@ -11,10 +11,12 @@ import {
 import { Organization } from '../organizations/organization.entity';
 import { User } from '../users/user.entity';
 
+export type PayoutDestinationKind = 'bank' | 'paypal';
+
 /**
- * A bank account payouts can be sent to, saved with the provider. Only the
- * provider's recipient reference and the last digits are kept; the full
- * account number stays with the provider.
+ * Where payouts can be sent, saved with the provider: a bank account (only
+ * the provider's recipient reference and the last digits are kept; the full
+ * account number stays with the provider), or a PayPal account's email.
  */
 @Entity({ name: 'payout_destinations' })
 @Check(
@@ -22,6 +24,10 @@ import { User } from '../users/user.entity';
   `num_nonnulls("user_id", "organization_id") = 1`,
 )
 @Check('chk_payout_destinations_currency', `"currency" ~ '^[A-Z]{3}$'`)
+@Check(
+  'chk_payout_destinations_kind',
+  `("kind" = 'bank' AND "bank_code" IS NOT NULL AND "account_number_last4" IS NOT NULL) OR ("kind" = 'paypal' AND "email" IS NOT NULL)`,
+)
 // One active destination per owner and provider account.
 @Index(
   'uq_payout_destinations_user_recipient',
@@ -72,8 +78,11 @@ export class PayoutDestination {
   @Column({ type: 'varchar', length: 100 })
   recipientReference: string;
 
-  @Column({ type: 'varchar', length: 20 })
-  bankCode: string;
+  @Column({ type: 'varchar', length: 10, default: 'bank' })
+  kind: PayoutDestinationKind;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  bankCode: string | null;
 
   @Column({ type: 'varchar', length: 200, nullable: true })
   bankName: string | null;
@@ -82,8 +91,12 @@ export class PayoutDestination {
   @Column({ type: 'varchar', length: 200 })
   accountName: string;
 
-  @Column({ type: 'varchar', length: 4 })
-  accountNumberLast4: string;
+  @Column({ type: 'varchar', length: 4, nullable: true })
+  accountNumberLast4: string | null;
+
+  /** PayPal destinations: the account's email, which PayPal pays to. */
+  @Column({ type: 'varchar', length: 254, nullable: true })
+  email: string | null;
 
   /** The owner's own name for it, e.g. "Payroll account". */
   @Column({ type: 'varchar', length: 100, nullable: true })
@@ -102,4 +115,22 @@ export class PayoutDestination {
   /** Removed destinations are kept for the payouts that used them. */
   @Column({ type: 'timestamptz', precision: 3, nullable: true })
   removedAt: Date | null;
+}
+
+/** "GTBank ****1234" or "PayPal a***@example.com", for messages and logs. */
+export function describeDestination(
+  destination: Pick<
+    PayoutDestination,
+    'kind' | 'bankName' | 'accountNumberLast4' | 'email' | 'accountName'
+  >,
+): string {
+  if (destination.kind === 'paypal') {
+    return `PayPal ${maskEmail(destination.email ?? '')}`;
+  }
+  return `${destination.accountName} ****${destination.accountNumberLast4 ?? ''}`;
+}
+
+export function maskEmail(email: string): string {
+  const [local = '', domain = ''] = email.split('@');
+  return `${local.slice(0, 1)}***@${domain}`;
 }

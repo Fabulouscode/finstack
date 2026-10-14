@@ -363,6 +363,133 @@ describe('PayPalProvider', () => {
     await expect(attempt).rejects.toMatchObject({ retryable: true });
   });
 
+  describe('payouts', () => {
+    const batch = (status: string, transactionStatus?: string): object => ({
+      batch_header: {
+        payout_batch_id: 'BATCH-1',
+        batch_status: status,
+        sender_batch_header: { sender_batch_id: 'pyt_1' },
+      },
+      ...(transactionStatus
+        ? {
+            items: [
+              {
+                transaction_status: transactionStatus,
+                payout_item: { sender_item_id: 'pyt_1' },
+              },
+            ],
+          }
+        : {}),
+    });
+
+    it('takes a PayPal email as the recipient, normalised', async () => {
+      const { provider } = providerReturning();
+      await expect(
+        provider.payouts.createEmailRecipient!({
+          currency: 'USD',
+          email: ' Ada@Example.COM ',
+          name: 'Ada Lovelace',
+        }),
+      ).resolves.toEqual({
+        recipientReference: 'ada@example.com',
+        accountName: 'Ada Lovelace',
+        bankName: 'PayPal',
+      });
+    });
+
+    it('refuses bank accounts, bad emails and unsupported currencies', async () => {
+      const { provider } = providerReturning();
+      await expect(
+        provider.payouts.createRecipient({
+          currency: 'USD',
+          bankCode: '058',
+          accountNumber: '0123456789',
+        }),
+      ).rejects.toMatchObject({ retryable: false });
+      await expect(
+        provider.payouts.createEmailRecipient!({
+          currency: 'USD',
+          email: 'not-an-email',
+        }),
+      ).rejects.toMatchObject({ retryable: false });
+      await expect(
+        provider.payouts.createEmailRecipient!({
+          currency: 'NGN',
+          email: 'ada@example.com',
+        }),
+      ).rejects.toMatchObject({ retryable: false });
+    });
+
+    it('sends one batch keyed by our reference, so a resend cannot pay twice', async () => {
+      const { provider, calls } = providerReturning(batch('PENDING'));
+
+      const result = await provider.payouts.initiate({
+        reference: 'pyt_1',
+        amount: 2_550n,
+        currency: 'USD',
+        recipientReference: 'ada@example.com',
+        narration: 'October invoice',
+      });
+
+      expect(result).toEqual({
+        providerReference: 'BATCH-1',
+        status: 'pending',
+      });
+      expect(calls[0]?.path).toBe('/v1/payments/payouts');
+      expect(calls[0]?.headers['PayPal-Request-Id']).toBe(
+        'finstack-payout-pyt_1',
+      );
+      expect(calls[0]?.body).toMatchObject({
+        sender_batch_header: { sender_batch_id: 'pyt_1' },
+        items: [
+          {
+            recipient_type: 'EMAIL',
+            receiver: 'ada@example.com',
+            amount: { currency: 'USD', value: '25.50' },
+            sender_item_id: 'pyt_1',
+            note: 'October invoice',
+          },
+        ],
+      });
+    });
+
+    it('cannot look a payout up without its batch id, so it says to resend', async () => {
+      const { provider, calls } = providerReturning();
+      await expect(provider.payouts.find('pyt_1', null)).resolves.toBeNull();
+      expect(calls).toHaveLength(0);
+    });
+
+    it.each([
+      ['SUCCESS', 'successful'],
+      ['UNCLAIMED', 'pending'],
+      ['PENDING', 'pending'],
+      ['FAILED', 'failed'],
+      ['BLOCKED', 'failed'],
+      ['RETURNED', 'reversed'],
+    ])('maps a %s item to %s', async (itemStatus, expected) => {
+      const { provider, calls } = providerReturning(
+        batch('SUCCESS', itemStatus),
+      );
+      const result = await provider.payouts.find('pyt_1', 'BATCH-1');
+      expect(result?.status).toBe(expected);
+      expect(calls[0]?.path).toBe('/v1/payments/payouts/BATCH-1');
+    });
+
+    it('fails a payout whose whole batch PayPal denied', async () => {
+      const { provider } = providerReturning(batch('DENIED'));
+      await expect(
+        provider.payouts.find('pyt_1', 'BATCH-1'),
+      ).resolves.toMatchObject({ status: 'failed' });
+    });
+
+    it('refuses a batch that belongs to another payout', async () => {
+      const { provider } = providerReturning(batch('SUCCESS', 'SUCCESS'));
+      await expect(
+        provider.payouts.find('pyt_other', 'BATCH-1'),
+      ).rejects.toMatchObject({ retryable: false });
+    });
+  });
+
   describe('webhooks', () => {
     const body = Buffer.from(
       JSON.stringify({
@@ -499,6 +626,21 @@ describe('PayPalProvider', () => {
           providerReference: 'rfd_1',
           reference: 'rfd_1',
         },
+      ],
+      [
+        'PAYMENT.PAYOUTS-ITEM.SUCCEEDED',
+        { payout_item: { sender_item_id: 'pyt_1' } },
+        { type: 'payout.succeeded', providerReference: 'pyt_1' },
+      ],
+      [
+        'PAYMENT.PAYOUTS-ITEM.RETURNED',
+        { payout_item: { sender_item_id: 'pyt_1' } },
+        { type: 'payout.reversed', providerReference: 'pyt_1' },
+      ],
+      [
+        'PAYMENT.PAYOUTSBATCH.DENIED',
+        { batch_header: { sender_batch_header: { sender_batch_id: 'pyt_1' } } },
+        { type: 'payout.failed', providerReference: 'pyt_1' },
       ],
       [
         'BILLING.SUBSCRIPTION.CREATED',

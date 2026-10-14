@@ -12,7 +12,11 @@ import { isUniqueViolation } from '../database/postgres-errors';
 import { PaymentProviderError } from '../payment-providers/payment-provider';
 import { PaymentProvidersService } from '../payment-providers/payment-providers.service';
 import { PaymentProviderUnavailableException } from '../payments/payments.errors';
-import { PayoutDestination } from './payout-destination.entity';
+import {
+  PayoutDestination,
+  describeDestination,
+} from './payout-destination.entity';
+import type { PayoutDestinationKind } from './payout-destination.entity';
 import {
   PayoutDestinationAlreadyExistsException,
   PayoutDestinationNotFoundException,
@@ -21,8 +25,12 @@ import {
 
 export interface NewPayoutDestination {
   currency: CurrencyCode;
-  bankCode: string;
-  accountNumber: string;
+  kind?: PayoutDestinationKind;
+  /** Bank destinations. */
+  bankCode?: string;
+  accountNumber?: string;
+  /** PayPal destinations. */
+  email?: string;
   accountName?: string;
   provider?: string;
   label?: string;
@@ -42,7 +50,8 @@ export class PayoutDestinationsService {
 
   /**
    * Saves a bank account with the provider (which verifies it) and keeps
-   * only the provider's reference and the last four digits.
+   * only the provider's reference and the last four digits; or a PayPal
+   * account by its email, with a provider that pays to email.
    */
   async add(
     owner: OwnerRef,
@@ -53,15 +62,30 @@ export class PayoutDestinationsService {
       input.provider,
     );
 
+    const kind = input.kind ?? 'bank';
     let recipient;
     try {
-      recipient = await payouts.createRecipient({
-        currency: input.currency,
-        bankCode: input.bankCode,
-        accountNumber: input.accountNumber,
-        accountName: input.accountName,
-      });
+      if (kind === 'paypal') {
+        if (!payouts.createEmailRecipient || !input.email) {
+          throw new PayoutDestinationRejectedException(
+            `${name} can't pay out to a PayPal email`,
+          );
+        }
+        recipient = await payouts.createEmailRecipient({
+          currency: input.currency,
+          email: input.email,
+          name: input.accountName,
+        });
+      } else {
+        recipient = await payouts.createRecipient({
+          currency: input.currency,
+          bankCode: input.bankCode ?? '',
+          accountNumber: input.accountNumber ?? '',
+          accountName: input.accountName,
+        });
+      }
     } catch (error) {
+      if (error instanceof PayoutDestinationRejectedException) throw error;
       if (error instanceof PaymentProviderError && !error.retryable) {
         throw new PayoutDestinationRejectedException(error.message);
       }
@@ -76,10 +100,13 @@ export class PayoutDestinationsService {
             provider: name,
             currency: input.currency,
             recipientReference: recipient.recipientReference,
-            bankCode: input.bankCode,
+            kind,
+            bankCode: kind === 'bank' ? (input.bankCode ?? null) : null,
             bankName: recipient.bankName,
             accountName: recipient.accountName,
-            accountNumberLast4: input.accountNumber.slice(-4),
+            accountNumberLast4:
+              kind === 'bank' ? (input.accountNumber ?? '').slice(-4) : null,
+            email: kind === 'paypal' ? recipient.recipientReference : null,
             label: input.label ?? null,
             removedAt: null,
             payoutsAvailableAt: new Date(
@@ -99,6 +126,7 @@ export class PayoutDestinationsService {
             accountName: destination.accountName,
             bankName: destination.bankName,
             accountNumberLast4: destination.accountNumberLast4,
+            description: describeDestination(destination),
             currency: destination.currency,
             payoutsAvailableAt: destination.payoutsAvailableAt.toISOString(),
           },
@@ -111,7 +139,8 @@ export class PayoutDestinationsService {
           metadata: {
             provider: name,
             currency: input.currency,
-            bankCode: input.bankCode,
+            kind,
+            bankCode: destination.bankCode,
             accountName: destination.accountName,
             accountNumberLast4: destination.accountNumberLast4,
           },

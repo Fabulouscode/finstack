@@ -114,7 +114,9 @@ export function notificationRules(
     }
 
     case 'payout_destination.added': {
-      const account = `${str(data.bankName) ?? 'Bank'} ****${str(data.accountNumberLast4) ?? ''} (${str(data.accountName) ?? ''})`;
+      const account =
+        str(data.description) ??
+        `${str(data.bankName) ?? 'Bank'} ****${str(data.accountNumberLast4) ?? ''} (${str(data.accountName) ?? ''})`;
       const availableAt = str(data.payoutsAvailableAt);
       const waiting =
         availableAt && new Date(availableAt).getTime() > Date.now() + 60_000;

@@ -36,7 +36,10 @@ import { TransactionsService } from '../transactions/transactions.service';
 import { Wallet } from '../wallets/wallet.entity';
 import { WalletNotFoundException } from '../wallets/wallets.errors';
 import { WalletsService } from '../wallets/wallets.service';
-import { PayoutDestination } from './payout-destination.entity';
+import {
+  PayoutDestination,
+  describeDestination,
+} from './payout-destination.entity';
 import { PayoutDestinationsService } from './payout-destinations.service';
 import { Payout } from './payout.entity';
 import {
@@ -333,8 +336,7 @@ export class PayoutsService {
       currency: wallet.currency,
       idempotencyKey,
       description:
-        input.narration ??
-        `Payout to ${destination.accountName} ****${destination.accountNumberLast4}`,
+        input.narration ?? `Payout to ${describeDestination(destination)}`,
       metadata: { payoutReference: reference, destinationId: destination.id },
       ...(fee.amount > 0n
         ? {
@@ -398,7 +400,9 @@ export class PayoutsService {
 
     let result: PayoutResult | null;
     try {
-      result = payout.submittedAt ? await payouts.find(payout.reference) : null;
+      result = payout.submittedAt
+        ? await payouts.find(payout.reference, payout.providerReference)
+        : null;
 
       if (!result && transaction.status === TransactionStatus.Processing) {
         if (!(await this.claimSubmission(payout.id))) {

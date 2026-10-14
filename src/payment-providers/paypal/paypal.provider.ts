@@ -10,13 +10,18 @@ import { paymentsConfig } from '../../config/payments.config';
 import type { PaymentsConfig } from '../../config/payments.config';
 import { JsonHttpClient } from '../http/json-http-client';
 import {
+  CreateEmailRecipientInput,
   FindRefundInput,
   InitializePaymentInput,
   InitializePaymentResult,
   PaymentProvider,
   PaymentProviderError,
+  PayoutCapability,
+  PayoutRecipient,
+  PayoutResult,
   ProviderEventType,
   ProviderPaymentStatus,
+  ProviderPayoutStatus,
   ProviderWebhookEvent,
   RefundPaymentInput,
   RefundPaymentResult,
@@ -57,6 +62,19 @@ interface Order {
   }[];
 }
 
+interface PayoutBatch {
+  batch_header: {
+    payout_batch_id: string;
+    batch_status: string;
+    sender_batch_header?: { sender_batch_id?: string };
+  };
+  items?: {
+    transaction_status?: string;
+    errors?: { name?: string; message?: string };
+    payout_item?: { sender_item_id?: string };
+  }[];
+}
+
 interface PayPalEvent {
   id?: string;
   event_type?: string;
@@ -65,8 +83,12 @@ interface PayPalEvent {
     custom_id?: string;
     purchase_units?: { reference_id?: string }[];
     supplementary_data?: { related_ids?: { order_id?: string } };
+    payout_item?: { sender_item_id?: string };
+    batch_header?: { sender_batch_header?: { sender_batch_id?: string } };
   };
 }
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const EVENT_TYPES: Record<string, ProviderEventType> = {
   'CHECKOUT.ORDER.APPROVED': 'payment.approved',
@@ -74,7 +96,35 @@ const EVENT_TYPES: Record<string, ProviderEventType> = {
   'PAYMENT.CAPTURE.DENIED': 'payment.failed',
   'PAYMENT.CAPTURE.DECLINED': 'payment.failed',
   'PAYMENT.CAPTURE.REFUNDED': 'refund.succeeded',
+  'PAYMENT.PAYOUTS-ITEM.SUCCEEDED': 'payout.succeeded',
+  'PAYMENT.PAYOUTS-ITEM.FAILED': 'payout.failed',
+  'PAYMENT.PAYOUTS-ITEM.BLOCKED': 'payout.failed',
+  'PAYMENT.PAYOUTS-ITEM.DENIED': 'payout.failed',
+  'PAYMENT.PAYOUTS-ITEM.CANCELED': 'payout.failed',
+  'PAYMENT.PAYOUTS-ITEM.RETURNED': 'payout.reversed',
+  'PAYMENT.PAYOUTS-ITEM.REFUNDED': 'payout.reversed',
+  'PAYMENT.PAYOUTS-ITEM.REVERSED': 'payout.reversed',
+  'PAYMENT.PAYOUTSBATCH.DENIED': 'payout.failed',
 };
+
+/** A payout item's status; UNCLAIMED waits for the recipient to open a PayPal account (30 days, then RETURNED). */
+function mapPayoutStatus(status: string | undefined): ProviderPayoutStatus {
+  switch (status) {
+    case 'SUCCESS':
+      return 'successful';
+    case 'FAILED':
+    case 'DENIED':
+    case 'BLOCKED':
+    case 'CANCELED':
+      return 'failed';
+    case 'RETURNED':
+    case 'REFUNDED':
+    case 'REVERSED':
+      return 'reversed';
+    default:
+      return 'pending';
+  }
+}
 
 function mapRefundStatus(status: string): ProviderPaymentStatus {
   if (status === 'COMPLETED') return 'successful';
@@ -92,6 +142,25 @@ function mapRefundStatus(status: string): ProviderPaymentStatus {
 export class PayPalProvider implements PaymentProvider {
   readonly name = 'paypal';
   readonly supportedCurrencies = ['USD', 'EUR', 'GBP', 'JPY'] as const;
+
+  /**
+   * Payouts to PayPal accounts by email (Payouts API). Our payout reference is both the batch's sender_batch_id,
+   * which PayPal refuses to reuse for 30 days, and its PayPal-Request-Id, so a resent payout can't pay twice.
+   */
+  readonly payouts: PayoutCapability = {
+    currencies: ['USD', 'EUR', 'GBP', 'JPY'],
+    createRecipient: () =>
+      Promise.reject(
+        new PaymentProviderError(
+          'PayPal pays out to PayPal accounts (an email address), not bank accounts',
+          false,
+        ),
+      ),
+    createEmailRecipient: (input) => this.createEmailRecipient(input),
+    initiate: (input) => this.initiatePayout(input),
+    find: (reference, providerReference) =>
+      this.findPayout(reference, providerReference),
+  };
 
   private token: { value: string; expiresAt: number } | null = null;
   private readonly certs = new Map<string, Promise<X509Certificate>>();
@@ -303,6 +372,16 @@ export class PayPalProvider implements PaymentProvider {
     const type = EVENT_TYPES[providerType] ?? 'unknown';
     const resource = event.resource;
 
+    if (type.startsWith('payout.')) {
+      return {
+        eventId: String(event.id),
+        type,
+        providerType,
+        providerReference:
+          resource?.payout_item?.sender_item_id ??
+          resource?.batch_header?.sender_batch_header?.sender_batch_id,
+      };
+    }
     if (type === 'refund.succeeded') {
       return {
         eventId: String(event.id),
@@ -330,6 +409,109 @@ export class PayPalProvider implements PaymentProvider {
           ? undefined
           : resource?.supplementary_data?.related_ids?.order_id,
       reference: resource?.custom_id,
+    };
+  }
+
+  private createEmailRecipient(
+    input: CreateEmailRecipientInput,
+  ): Promise<PayoutRecipient> {
+    const email = input.email.trim().toLowerCase();
+    if (!EMAIL.test(email)) {
+      return Promise.reject(
+        new PaymentProviderError(
+          'Not a valid email address for a PayPal payout',
+          false,
+        ),
+      );
+    }
+    if (!(this.payouts.currencies as string[]).includes(input.currency)) {
+      return Promise.reject(
+        new PaymentProviderError(
+          `PayPal cannot pay out in ${input.currency}`,
+          false,
+        ),
+      );
+    }
+    // PayPal has no saved-recipient object: the email is the recipient.
+    return Promise.resolve({
+      recipientReference: email,
+      accountName: input.name?.trim() || email,
+      bankName: 'PayPal',
+    });
+  }
+
+  private async initiatePayout(input: {
+    reference: string;
+    amount: bigint;
+    currency: string;
+    recipientReference: string;
+    narration?: string;
+  }): Promise<PayoutResult> {
+    const batch = await this.call<PayoutBatch>('POST', '/v1/payments/payouts', {
+      body: {
+        sender_batch_header: {
+          sender_batch_id: input.reference,
+          email_subject: 'You have a payment',
+          ...(input.narration ? { email_message: input.narration } : {}),
+        },
+        items: [
+          {
+            recipient_type: 'EMAIL',
+            receiver: input.recipientReference,
+            amount: {
+              currency: input.currency,
+              value: toMajorUnitString(input.amount, input.currency),
+            },
+            sender_item_id: input.reference,
+            ...(input.narration ? { note: input.narration } : {}),
+          },
+        ],
+      },
+      requestId: `finstack-payout-${input.reference}`,
+    });
+    return this.payoutResult(batch);
+  }
+
+  /**
+   * With the batch id, PayPal's authoritative state. Without it (the response to the send was lost), null: sending
+   * again is safe, because PayPal replays the original batch for the same PayPal-Request-Id and refuses a reused
+   * sender_batch_id.
+   */
+  private async findPayout(
+    reference: string,
+    batchId?: string | null,
+  ): Promise<PayoutResult | null> {
+    if (!batchId) return null;
+    const batch = await this.call<PayoutBatch>(
+      'GET',
+      `/v1/payments/payouts/${encodeURIComponent(batchId)}`,
+    );
+    if (batch.batch_header.sender_batch_header?.sender_batch_id !== reference) {
+      throw new PaymentProviderError(
+        'PayPal payout batch belongs to another payout',
+        false,
+      );
+    }
+    return this.payoutResult(batch);
+  }
+
+  private payoutResult(batch: PayoutBatch): PayoutResult {
+    const item = batch.items?.[0];
+    const status =
+      batch.batch_header.batch_status === 'DENIED'
+        ? 'failed'
+        : mapPayoutStatus(item?.transaction_status);
+    const reason = item?.errors?.message ?? item?.errors?.name;
+    return {
+      providerReference: batch.batch_header.payout_batch_id,
+      status,
+      ...(status === 'failed'
+        ? {
+            failureReason:
+              reason ??
+              `PayPal payout ${String(item?.transaction_status ?? batch.batch_header.batch_status).toLowerCase()}`,
+          }
+        : {}),
     };
   }
 

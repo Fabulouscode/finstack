@@ -5213,7 +5213,8 @@
                 "mock",
                 "paystack",
                 "stripe",
-                "flutterwave"
+                "flutterwave",
+                "paypal"
               ]
             }
           },
@@ -6328,7 +6329,8 @@
                 "mock",
                 "paystack",
                 "stripe",
-                "flutterwave"
+                "flutterwave",
+                "paypal"
               ]
             }
           },
@@ -7602,7 +7604,8 @@
                 "mock",
                 "paystack",
                 "stripe",
-                "flutterwave"
+                "flutterwave",
+                "paypal"
               ]
             }
           },
@@ -13790,7 +13793,8 @@
               "mock",
               "paystack",
               "stripe",
-              "flutterwave"
+              "flutterwave",
+              "paypal"
             ],
             "example": "mock"
           },
@@ -13834,7 +13838,8 @@
               "mock",
               "paystack",
               "stripe",
-              "flutterwave"
+              "flutterwave",
+              "paypal"
             ],
             "example": "mock"
           },
@@ -14026,15 +14031,29 @@
             ],
             "example": "NGN"
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "paypal"
+            ],
+            "default": "bank",
+            "description": "A bank account, or a PayPal account paid by email"
+          },
           "bankCode": {
             "type": "string",
-            "description": "The provider's bank code",
+            "description": "Bank destinations: the provider's bank code",
             "example": "058"
           },
           "accountNumber": {
             "type": "string",
             "example": "0123456789",
-            "description": "Sent to the provider; only the last 4 digits are stored"
+            "description": "Bank destinations: sent to the provider; only the last 4 digits are stored"
+          },
+          "email": {
+            "type": "string",
+            "description": "PayPal destinations: the PayPal account email",
+            "example": "ada@example.com"
           },
           "accountName": {
             "type": "string",
@@ -14047,7 +14066,8 @@
               "mock",
               "paystack",
               "stripe",
-              "flutterwave"
+              "flutterwave",
+              "paypal"
             ],
             "example": "paystack"
           },
@@ -14058,9 +14078,7 @@
           }
         },
         "required": [
-          "currency",
-          "bankCode",
-          "accountNumber"
+          "currency"
         ]
       },
       "PayoutDestinationResponseDto": {
@@ -14078,8 +14096,16 @@
             "type": "string",
             "example": "NGN"
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "paypal"
+            ]
+          },
           "bankCode": {
             "type": "string",
+            "nullable": true,
             "example": "058"
           },
           "bankName": {
@@ -14093,7 +14119,14 @@
           },
           "accountNumberLast4": {
             "type": "string",
+            "nullable": true,
             "example": "6789"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "example": "a***@example.com",
+            "description": "PayPal destinations: the email, masked"
           },
           "label": {
             "type": "string",
@@ -14114,10 +14147,12 @@
           "id",
           "provider",
           "currency",
+          "kind",
           "bankCode",
           "bankName",
           "accountName",
           "accountNumberLast4",
+          "email",
           "label",
           "payoutsAvailableAt",
           "createdAt"
@@ -14278,7 +14313,8 @@
               "mock",
               "paystack",
               "stripe",
-              "flutterwave"
+              "flutterwave",
+              "paypal"
             ],
             "description": "Omit to check the ledger itself",
             "example": "paystack"
