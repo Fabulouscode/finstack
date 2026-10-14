@@ -103,7 +103,6 @@ const EVENT_TYPES: Record<string, ProviderEventType> = {
   'PAYMENT.PAYOUTS-ITEM.CANCELED': 'payout.failed',
   'PAYMENT.PAYOUTS-ITEM.RETURNED': 'payout.reversed',
   'PAYMENT.PAYOUTS-ITEM.REFUNDED': 'payout.reversed',
-  'PAYMENT.PAYOUTS-ITEM.REVERSED': 'payout.reversed',
   'PAYMENT.PAYOUTSBATCH.DENIED': 'payout.failed',
 };
 
