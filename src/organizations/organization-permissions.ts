@@ -15,6 +15,10 @@ export enum OrgPermission {
   CreatePayouts = 'payouts:create',
   ManagePayoutDestinations = 'payout_destinations:manage',
   ManageWebhooks = 'webhooks:manage',
+  /** Suggest an action (e.g. a payout); nothing runs until it's approved. */
+  ProposeActions = 'proposals:create',
+  /** Approve or reject proposals. Never given to API keys. */
+  DecideProposals = 'proposals:decide',
 }
 
 export enum OrgRole {
@@ -44,8 +48,14 @@ export const ROLE_PERMISSIONS: Readonly<
     OrgPermission.CreatePayouts,
     OrgPermission.ManagePayoutDestinations,
     OrgPermission.ManageWebhooks,
+    OrgPermission.ProposeActions,
+    OrgPermission.DecideProposals,
   ],
-  [OrgRole.Member]: [...READ, OrgPermission.CreatePayments],
+  [OrgRole.Member]: [
+    ...READ,
+    OrgPermission.CreatePayments,
+    OrgPermission.ProposeActions,
+  ],
   [OrgRole.Viewer]: READ,
 };
 

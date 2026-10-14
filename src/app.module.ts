@@ -6,6 +6,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { FeesModule } from './fees/fees.module';
 import { LimitsModule } from './limits/limits.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { ProposalsModule } from './proposals/proposals.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
@@ -48,6 +49,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     PaymentsModule,
     RefundsModule,
     PayoutsModule,
+    ProposalsModule,
     ReconciliationModule,
     AdminModule,
     SandboxModule,

@@ -7903,6 +7903,536 @@
         ]
       }
     },
+    "/v1/organizations/{organizationId}/proposals": {
+      "post": {
+        "description": "Requires `proposals:create`. Nothing happens until someone with `proposals:decide` approves it.",
+        "operationId": "ProposalsController_create_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProposalRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR: the request body is invalid. See `errors`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: your role or API key lacks the permission",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PAYOUT_DESTINATION_NOT_FOUND",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See the `Retry-After` header.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error. Quote `requestId` when reporting it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          },
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "Propose an action (e.g. a payout) for a person to approve",
+        "tags": [
+          "Proposals"
+        ]
+      },
+      "get": {
+        "operationId": "ProposalsController_list_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "rejected",
+                "executed",
+                "failed",
+                "expired"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProposalResponseDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: your role or API key lacks the permission",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See the `Retry-After` header.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error. Quote `requestId` when reporting it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          },
+          {
+            "api-key": []
+          }
+        ],
+        "summary": "List proposals, newest first (100 at most)",
+        "tags": [
+          "Proposals"
+        ]
+      }
+    },
+    "/v1/organizations/{organizationId}/proposals/{proposalId}": {
+      "get": {
+        "operationId": "ProposalsController_get_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: your role or API key lacks the permission",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PROPOSAL_NOT_FOUND",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See the `Retry-After` header.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error. Quote `requestId` when reporting it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          },
+          {
+            "api-key": []
+          }
+        ],
+        "tags": [
+          "Proposals"
+        ]
+      }
+    },
+    "/v1/organizations/{organizationId}/proposals/{proposalId}/approve": {
+      "post": {
+        "description": "Requires `proposals:decide`. A rejected action (e.g. insufficient balance) marks the proposal `failed`.",
+        "operationId": "ProposalsController_approve_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideProposalRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: your role or API key lacks the permission",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PROPOSAL_NOT_FOUND",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "PROPOSAL_ALREADY_DECIDED | PROPOSAL_EXPIRED: it can no longer be decided",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See the `Retry-After` header.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error. Quote `requestId` when reporting it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Approve a proposal, which runs it (people only, not API keys)",
+        "tags": [
+          "Proposals"
+        ]
+      }
+    },
+    "/v1/organizations/{organizationId}/proposals/{proposalId}/reject": {
+      "post": {
+        "operationId": "ProposalsController_reject_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideProposalRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED: missing or invalid credentials",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "FORBIDDEN: your role or API key lacks the permission",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PROPOSAL_NOT_FOUND",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "PROPOSAL_ALREADY_DECIDED | PROPOSAL_EXPIRED: it can no longer be decided",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See the `Retry-After` header.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error. Quote `requestId` when reporting it.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetailsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Reject a proposal (people only, not API keys)",
+        "tags": [
+          "Proposals"
+        ]
+      }
+    },
     "/v1/admin/reconciliation/runs": {
       "post": {
         "description": "Compares FinStack's payments and payouts with the provider's records for the period (or, without a provider, checks the ledger). Runs in the background; poll the run. Late webhooks are settled automatically; other differences become items to resolve.",
@@ -12554,7 +13084,8 @@
                 "wallets:manage",
                 "payments:create",
                 "transactions:read",
-                "payouts:create"
+                "payouts:create",
+                "proposals:create"
               ]
             }
           },
@@ -14303,6 +14834,188 @@
           "data",
           "nextCursor"
         ]
+      },
+      "CreateProposalRequestDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "payout"
+            ],
+            "description": "What to do if approved"
+          },
+          "destinationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Payout: a saved destination"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Minor units",
+            "example": 25000
+          },
+          "walletId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "narration": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "October design work"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 300,
+            "example": "Pay Ada Lovelace $250 for October design work",
+            "description": "One line the approver reads first"
+          },
+          "reasoning": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "Why this is the right action"
+          },
+          "evidence": {
+            "type": "object",
+            "description": "What was checked: record ids, figures, links",
+            "example": {
+              "invoice": "INV-104",
+              "lastPaid": "2026-09-30"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "destinationId",
+          "amount",
+          "summary",
+          "reasoning"
+        ]
+      },
+      "ProposalResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "payout"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected",
+              "executed",
+              "failed",
+              "expired"
+            ]
+          },
+          "destinationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Minor units"
+          },
+          "walletId": {
+            "type": "string",
+            "nullable": true
+          },
+          "narration": {
+            "type": "string",
+            "nullable": true
+          },
+          "summary": {
+            "type": "string"
+          },
+          "reasoning": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "proposedByApiKeyId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Set when an API key (e.g. an AI agent) proposed it"
+          },
+          "proposedByUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "decidedByUserId": {
+            "type": "string",
+            "nullable": true
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "decisionNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "example": {
+              "payoutId": "…",
+              "reference": "pyt_…"
+            }
+          },
+          "failureReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "destinationId",
+          "amount",
+          "walletId",
+          "narration",
+          "summary",
+          "reasoning",
+          "evidence",
+          "proposedByApiKeyId",
+          "proposedByUserId",
+          "decidedByUserId",
+          "decidedAt",
+          "decisionNote",
+          "result",
+          "failureReason",
+          "expiresAt",
+          "createdAt"
+        ]
+      },
+      "DecideProposalRequestDto": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
       },
       "StartReconciliationRequestDto": {
         "type": "object",

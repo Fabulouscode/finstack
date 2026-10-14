@@ -35,6 +35,9 @@ export const AuditAction = {
   ReconciliationItemResolved: 'reconciliation_item.resolved',
   WebhookReplayed: 'webhook.replayed',
   RefreshTokenReuseDetected: 'auth.refresh_token_reuse_detected',
+  ProposalCreated: 'proposal.created',
+  ProposalApproved: 'proposal.approved',
+  ProposalRejected: 'proposal.rejected',
 } as const;
 
 export type AuditActionName = (typeof AuditAction)[keyof typeof AuditAction];

@@ -326,7 +326,7 @@ Transactions move through explicit states (`pending → processing → successfu
 | `POST /v1/payments` | Bearer + `Idempotency-Key` | Start a payment: `{ "amount": 1550000, "currency": "NGN" }` → hosted checkout URL |
 | `GET /v1/payments/:id` | Bearer | Payment status (and the FX conversion, if any) |
 | `POST /v1/payments/:id/verify` | Bearer | Ask the provider and settle (e.g. after the customer returns from checkout) |
-| `POST /v1/webhooks/:provider` | Signature | Provider callbacks (`mock`, `paystack`, `stripe`) |
+| `POST /v1/webhooks/:provider` | Signature | Provider callbacks (`mock`, `paystack`, `stripe`, `flutterwave`, `paypal`) |
 | `POST /v1/sandbox/payments/:id/complete` | Bearer | **Sandbox/dev only:** finish one of your mock checkouts (sends a signed webhook) |
 
 **Flow:** the crediting rule picks the wallet (locking an FX quote if the currencies differ) → the provider returns a checkout URL → the customer pays → the provider's **signed** webhook arrives → FinStack **re-checks the payment with the provider** and compares the amount → one database transaction credits the wallet (converting if needed), posts the ledger and marks the transaction `successful`.
@@ -486,7 +486,7 @@ Withdraw from a wallet to a bank account. Users use `/v1/...`; organizations use
 
 | Endpoint | Description |
 | --- | --- |
-| `POST` / `GET /v1/payout-destinations` | Save a bank account (verified by the provider; only the last 4 digits are stored) or list them |
+| `POST` / `GET /v1/payout-destinations` | Save a bank account (verified by the provider; only the last 4 digits are stored), or a PayPal account with `{ "kind": "paypal", "email": "…" }`; or list them |
 | `DELETE /v1/payout-destinations/:id` | Remove one |
 | `POST /v1/payouts` | Withdraw (Idempotency-Key). Holds the funds, sends them, and settles by webhook |
 | `GET /v1/payouts/:id` | Status: `processing`, then `successful`, `failed` (hold released) or `reversed` (credited back) |
@@ -498,9 +498,22 @@ curl -X POST localhost:3000/v1/payouts -H "Authorization: Bearer $TOKEN" \
   -d '{"destinationId": "<id>", "amount": 500000}'
 ```
 
-A payout is **never sent twice**. The provider is always asked about our reference before anything is sent again, and payouts stuck in `processing` are re-checked every few minutes. Payouts work with the mock, **Paystack Transfers** (NGN, GHS, ZAR) and **Flutterwave Transfers** (NGN). Stripe payouts would need Stripe Connect and aren't included.
+A payout is **never sent twice**. The provider is always asked about our reference before anything is sent again, and payouts stuck in `processing` are re-checked every few minutes. Payouts work with the mock, **Paystack Transfers** (NGN, GHS, ZAR), **Flutterwave Transfers** (NGN) and **PayPal Payouts** (USD, EUR, GBP, JPY, to a PayPal account's email). Stripe payouts would need Stripe Connect and aren't included.
 
 **Bank codes belong to the provider.** The same bank can have different codes on different providers (OPay is `999992` on Paystack and `100004` on Flutterwave), so take `bankCode` from the bank list of the provider the destination is saved with. See [ADR 0018](./docs/adr/0018-payouts.md).
+
+## Proposals (agents propose, people approve)
+
+An AI agent, or anyone with `proposals:create`, can **propose** an action for an organization. Nothing moves until a person with `proposals:decide` **approves** it, and no API key can hold that permission, so an agent's key can suggest payouts but never make them.
+
+| Endpoint | Auth | Description |
+| --- | --- | --- |
+| `POST /v1/organizations/:id/proposals` | `proposals:create` (API keys allowed) | Propose a payout: `destinationId`, `amount`, a one-line `summary`, the `reasoning` and any `evidence` |
+| `GET /v1/organizations/:id/proposals` | `proposals:create` (API keys allowed) | List them, optionally `?status=pending` |
+| `POST …/proposals/:proposalId/approve` | `proposals:decide`, people only | Runs it once, as a normal payout (Idempotency-Key `proposal:<id>`) |
+| `POST …/proposals/:proposalId/reject` | `proposals:decide`, people only | Optional `{ "note": "…" }` |
+
+Approval goes through every usual check (balance, limits, fees, the ledger). Two people approving at the same moment create one payout. Proposals expire after 24 hours, and every step is in the audit log. See [ADR 0032](./docs/adr/0032-action-proposals.md).
 
 ## Reconciliation
 

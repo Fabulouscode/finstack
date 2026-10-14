@@ -36,6 +36,6 @@ import { PayoutsService } from './payouts.service';
     AdminPayoutsController,
   ],
   providers: [PayoutsService, PayoutDestinationsService],
-  exports: [PayoutsService],
+  exports: [PayoutsService, PayoutDestinationsService],
 })
 export class PayoutsModule {}
