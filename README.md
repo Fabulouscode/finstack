@@ -515,6 +515,30 @@ An AI agent, or anyone with `proposals:create`, can **propose** an action for an
 
 Approval goes through every usual check (balance, limits, fees, the ledger). Two people approving at the same moment create one payout. Proposals expire after 24 hours, and every step is in the audit log. See [ADR 0032](./docs/adr/0032-action-proposals.md).
 
+### AI agents: `finstack mcp`
+
+`finstack mcp` serves an organization to an AI agent (Claude, or any [MCP](https://modelcontextprotocol.io) client) over stdio. The agent gets **read-only tools** (wallets and their history, transactions, payments, payouts, payout destinations, fee quotes, proposals) and **one write tool, `finstack_propose_payout`**, which creates a [proposal](#proposals-agents-propose-people-approve). There is no tool that pays or approves.
+
+Create an API key for the agent with `proposals:create` and the read scopes (`wallets:read`, `transactions:read`, `organization:read`), **not** `payouts:create`. Then add FinStack to your MCP client, e.g. Claude Desktop's `claude_desktop_config.json` or a project's `.mcp.json` for Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "finstack": {
+      "command": "npx",
+      "args": ["finstack", "mcp"],
+      "env": {
+        "FINSTACK_URL": "http://localhost:3000",
+        "FINSTACK_ORGANIZATION_ID": "<organization id>",
+        "FINSTACK_API_KEY": "<the agent's API key>"
+      }
+    }
+  }
+}
+```
+
+Ask it, for example, *"Check our USD wallet and propose paying Ada $250 for her October invoice"*. It reads what it needs and files a proposal with its reasoning and evidence; a person approves it in FinStack.
+
 ## Reconciliation
 
 Every day at 02:00 UTC, FinStack compares the previous day's payments and payouts with each provider's own records (mock, Paystack and Stripe), and checks that the ledger balances. Admins can also start a run for any period of up to 31 days.
@@ -733,7 +757,7 @@ Integration and e2e tests need `npm run infra:up`. They always use the `finstack
 - [x] **Phase 2 — Payments:** provider abstraction (mock, Paystack, Stripe, later Flutterwave), currency routing (local → Paystack, international → Stripe, overridable), payments with FX, signed webhooks, outbox and BullMQ workers, refunds
 - [x] **Phase 3 — Operations:** audit logs, payouts, settlement holds, reconciliation, outbound webhooks, email notifications, admin tooling, observability
 - [x] **Hardening:** fee engine, velocity limits, payout cooling-off, staff roles, DNS pinning for webhooks
-- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint, Flutterwave, `finstack listen`): more providers, dashboard
+- [ ] **Phase 4 — Developer platform** (done: sandbox, deployment guide and Render Blueprint, Flutterwave, PayPal, `finstack listen`, `finstack mcp` with action proposals): more providers, dashboard
 
 ## Architecture decisions
 

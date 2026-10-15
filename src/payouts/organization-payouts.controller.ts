@@ -84,10 +84,14 @@ export class OrganizationPayoutsController {
   @Get('payout-destinations')
   @AllowApiKey()
   @ApiSecurity(API_KEY_SCHEME)
-  @RequireOrgPermission(OrgPermission.CreatePayouts)
+  @RequireOrgPermission(
+    OrgPermission.CreatePayouts,
+    OrgPermission.ProposeActions,
+  )
   @ApiOperation({
     summary: "List the organization's payout destinations",
-    description: 'Requires `payouts:create`.',
+    description:
+      'Requires `payouts:create` or `proposals:create` (so an agent can see who it may propose paying, without being able to pay).',
   })
   @ApiOkResponse({ type: [PayoutDestinationResponseDto] })
   async listDestinations(

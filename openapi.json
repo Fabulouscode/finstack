@@ -7166,7 +7166,7 @@
         ]
       },
       "get": {
-        "description": "Requires `payouts:create`.",
+        "description": "Requires `payouts:create` or `proposals:create` (so an agent can see who it may propose paying, without being able to pay).",
         "operationId": "OrganizationPayoutsController_listDestinations_v1",
         "parameters": [
           {

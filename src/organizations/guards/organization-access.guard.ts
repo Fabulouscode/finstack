@@ -27,11 +27,12 @@ export class OrganizationAccessGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const permission = this.reflector.get<OrgPermission | undefined>(
+    const permissions = this.reflector.get<OrgPermission[] | undefined>(
       ORG_PERMISSION_KEY,
       context.getHandler(),
     );
-    if (!permission) {
+    const [permission] = permissions ?? [];
+    if (!permissions || !permission) {
       return true;
     }
 
@@ -48,7 +49,7 @@ export class OrganizationAccessGuard implements CanActivate {
       if (request.apiKey.organizationId !== organizationId) {
         throw new OrganizationNotFoundException();
       }
-      if (!request.apiKey.scopes.includes(permission)) {
+      if (!permissions.some((p) => request.apiKey?.scopes.includes(p))) {
         throw new ApiKeyScopeMissingException(permission);
       }
       request.organizationAccess = {
@@ -72,11 +73,11 @@ export class OrganizationAccessGuard implements CanActivate {
     const organization = await this.organizations.get(organizationId);
     if (
       organization.status !== OrganizationStatus.Active &&
-      permission !== OrgPermission.ReadOrganization
+      permissions.some((p) => p !== OrgPermission.ReadOrganization)
     ) {
       throw new OrganizationSuspendedException();
     }
-    if (!roleHasPermission(membership.role, permission)) {
+    if (!permissions.some((p) => roleHasPermission(membership.role, p))) {
       throw new OrganizationPermissionDeniedException(permission);
     }
 

@@ -2,13 +2,17 @@
 import { existsSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { buildSources } from './listen/build-sources';
 import { Listener } from './listen/listener';
+import { FinStackClient } from './mcp/finstack-client';
+import { createFinStackMcpServer } from './mcp/server';
 
 const HELP = `FinStack developer CLI
 
 Usage:
   finstack listen [options]   Deliver test-mode provider events to a local FinStack
+  finstack mcp [options]      Serve FinStack to an AI agent over MCP (stdio)
 
 Options for listen:
   --provider <name>   paystack, stripe or flutterwave (repeatable). Default: the
@@ -22,6 +26,13 @@ Options for listen:
 How it works: the CLI asks each provider's API (with your test key) for new
 payments and payouts, and posts them to FinStack as signed webhooks. No tunnel,
 public URL or dashboard setup is needed. Only test keys are accepted.
+
+Options for mcp:
+  --url <url>         FinStack's URL. Default: FINSTACK_URL, or http://localhost:$PORT
+  --env-file <path>   Settings file. Default: .env
+  Needs FINSTACK_API_KEY (scopes: proposals:create and the read scopes) and
+  FINSTACK_ORGANIZATION_ID. The agent can read and propose payouts; a person
+  approves every proposal in FinStack.
 `;
 
 async function listen(argv: string[]): Promise<number> {
@@ -97,9 +108,45 @@ async function listen(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function mcp(argv: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      url: { type: 'string' },
+      'env-file': { type: 'string', default: '.env' },
+    },
+  });
+  if (existsSync(values['env-file'])) process.loadEnvFile(values['env-file']);
+
+  // stdout carries the MCP protocol: everything else goes to stderr.
+  const apiKey = process.env.FINSTACK_API_KEY;
+  const organizationId = process.env.FINSTACK_ORGANIZATION_ID;
+  if (!apiKey || !organizationId) {
+    console.error(
+      'Set FINSTACK_API_KEY and FINSTACK_ORGANIZATION_ID (an API key with proposals:create and read scopes).',
+    );
+    return 1;
+  }
+  const baseUrl =
+    values.url ??
+    process.env.FINSTACK_URL ??
+    `http://localhost:${process.env.PORT ?? '3000'}`;
+
+  const server = createFinStackMcpServer(
+    new FinStackClient({ baseUrl, apiKey, organizationId }),
+  );
+  await server.connect(new StdioServerTransport());
+  console.error(
+    `FinStack MCP server ready (${baseUrl}, organization ${organizationId})`,
+  );
+  await new Promise<void>((resolve) => process.stdin.once('close', resolve));
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   if (command === 'listen') return listen(rest);
+  if (command === 'mcp') return mcp(rest);
   if (
     !command ||
     command === 'help' ||
@@ -109,7 +156,7 @@ async function main(argv: string[]): Promise<number> {
     console.log(HELP);
     return 0;
   }
-  console.error(`Unknown command "${command}". Commands: listen, help\n`);
+  console.error(`Unknown command "${command}". Commands: listen, mcp, help\n`);
   console.log(HELP);
   return 1;
 }

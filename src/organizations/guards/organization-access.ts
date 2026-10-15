@@ -5,12 +5,13 @@ import { OrgPermission, OrgRole } from '../organization-permissions';
 export const ORG_PERMISSION_KEY = 'finstack:org-permission';
 
 /**
- * Requires the caller to hold `permission` in the organization named by the
- * `:organizationId` route parameter. Use with OrganizationAccessGuard.
+ * Requires the caller to hold `permission` (or any one of several) in the
+ * organization named by the `:organizationId` route parameter. Use with
+ * OrganizationAccessGuard.
  */
 export const RequireOrgPermission = (
-  permission: OrgPermission,
-): MethodDecorator => SetMetadata(ORG_PERMISSION_KEY, permission);
+  ...permissions: [OrgPermission, ...OrgPermission[]]
+): MethodDecorator => SetMetadata(ORG_PERMISSION_KEY, permissions);
 
 /** Resolved by OrganizationAccessGuard and available to handlers. */
 export interface OrganizationAccess {

@@ -189,6 +189,20 @@ describe('Proposals: agents propose, people approve (e2e)', () => {
     expect(await available()).toBe(7_500);
   });
 
+  it('lets the agent see destinations but never pay them directly', async () => {
+    const listed = (
+      await asAgent('get', orgPath('/payout-destinations')).expect(200)
+    ).body as PayoutDestinationResponseDto[];
+    expect(listed.map((d) => d.id)).toEqual([destination.id]);
+
+    const direct = await asAgent('post', orgPath('/payouts'))
+      .set('Idempotency-Key', 'agent-direct')
+      .send({ destinationId: destination.id, amount: 100 });
+    expect(direct.status).toBe(403);
+    expect(direct.body).toMatchObject({ code: 'API_KEY_SCOPE_MISSING' });
+    expect(await payouts()).toBe(0);
+  });
+
   it('never lets an API key approve, even its own proposal', async () => {
     const proposal = await propose();
     const denied = await asAgent(
